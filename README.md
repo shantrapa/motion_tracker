@@ -67,6 +67,21 @@ python -m motion [--model lite|full|heavy] [--input video.mp4] [--log metrics.cs
 | `g` | scene on/off (ball and button) |
 | `q` / `Esc` | quit |
 
+## Games
+
+Motion-controlled mini-games on top of the tracker, no keyboard: the camera is the controller.
+
+```
+python -m game [--model lite|full|heavy] [--input video.mp4]
+```
+
+- **Catch** (G1): balls fall faster and faster; catch blue ones with your left hand and red ones with your right.
+  Five in a row raise the score multiplier; a missed ball costs a life. Raise both hands to start and to play again.
+
+More modes are planned (fruit slicing, punching targets, dodging, "copy the pose", a rhythm game): see the
+"Мини-игры" section in [CLAUDE.md](CLAUDE.md). Game logic is plain Python that only sees a `PlayerState`
+(hands, head, gesture events), never landmarks.
+
 ## How it works
 
 ```
@@ -88,6 +103,7 @@ capture → tracker → smoothing → renderer
 | `event_engine.py` | debounce, cooldowns, `GestureEngine` turning states and detector hits into events |
 | `metrics.py` | FPS and latency over a time window |
 | `renderer.py` | all OpenCV drawing and the window |
+| `pipeline.py` | camera → models → smoothing → hand sides → gesture events, one frame per call; shared by the tracker window and the games |
 | `config.py` | every tunable number |
 
 - Inference runs on the raw, unmirrored frame, so left and right stay anatomically correct. Only the displayed image and the coordinates are mirrored.
