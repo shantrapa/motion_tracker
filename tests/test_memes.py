@@ -1,9 +1,9 @@
 """Meme poses (detect_meme_pose) and the picture switching logic (MemeController)."""
 
 from motion.contract import (
-    LEFT_ELBOW, LEFT_WRIST, RIGHT_ELBOW, RIGHT_WRIST, Landmark,
+    LEFT_ELBOW, LEFT_INDEX, LEFT_WRIST, NOSE, RIGHT_ELBOW, RIGHT_INDEX, RIGHT_WRIST, Landmark,
 )
-from motion.meme_poses import MemeController, detect_meme_pose
+from motion.meme_poses import LEFT_EAR, RIGHT_EAR, MemeController, detect_meme_pose
 
 from tests.test_body_state import pose
 from tests.test_gestures import ALL, make_hand
@@ -13,6 +13,7 @@ Hand = tuple[Landmark, ...]
 
 # Face points on top of the neutral test figure (nose (0.5, 0.15), shoulders 0.2 apart at y=0.3).
 FACE = {
+    2: (0.53, 0.12), 5: (0.47, 0.12),   # eyes: left, right
     3: (0.54, 0.12), 6: (0.46, 0.12),   # outer eye corners: left, right
     7: (0.57, 0.13), 8: (0.43, 0.13),   # ears
     9: (0.52, 0.19), 10: (0.48, 0.19),  # mouth corners -> mouth center (0.5, 0.19)
@@ -57,8 +58,14 @@ def test_nothing_in_a_neutral_stance() -> None:
 
 
 def test_shush_vs_thinking_monkey() -> None:
-    assert meme(body(), right=tip_at(POINT_UP, MOUTH)) == "SHUSH"            # finger straight up over the lips
-    sideways = turn(POINT_UP, 1)                                              # finger lying sideways under the lip
+    # Reported: the two came out the other way round. Both fingers point up; what differs is where the tip is.
+    across_lips = (0.5, 0.165)  # shush: the finger covers the lips, so the tip is above the mouth's middle
+    lower_lip = (0.5, 0.2)      # monkey: the fingertip pressed to the lower lip from below
+    assert meme(body(), right=tip_at(POINT_UP, across_lips)) == "SHUSH"
+    assert meme(body(), right=tip_at(POINT_UP, lower_lip)) == "MONKEY_THINKING"
+    thumb_out = place(make_hand({"index"}, thumb="side"), (0, 0))       # a finger gun, as many people shush
+    assert meme(body(), right=tip_at(thumb_out, across_lips)) == "SHUSH"
+    sideways = turn(POINT_UP, 1)                                        # finger lying sideways under the lip
     assert meme(body(), right=tip_at(sideways, MOUTH)) == "MONKEY_THINKING"
 
 
@@ -104,6 +111,30 @@ def test_absolute_cinema_raised_or_spread() -> None:
     assert meme(body(spread)) == "ABSOLUTE_CINEMA"                     # the spec: arms spread at shoulder height
     fists = place(make_hand(set()), (0.25, 0.2))
     assert meme(body(raised), right=fists) is None                       # fists up is cheering, not cinema
+
+
+def test_hands_at_the_head_jackie_vs_no_waying() -> None:
+    hands_up = {RIGHT_WRIST: (0.42, 0.2), RIGHT_INDEX: (0.43, 0.1), LEFT_WRIST: (0.58, 0.2), LEFT_INDEX: (0.57, 0.1)}
+    assert meme(body(hands_up)) == "JACKIE_CHAN"                              # elbows down: hands at the temples
+    elbows_up = {**hands_up, RIGHT_ELBOW: (0.25, 0.28), LEFT_ELBOW: (0.75, 0.28)}
+    assert meme(body(elbows_up)) == "NO_WAYING"                               # elbows up and out: hands behind the head
+
+
+def test_facepalm() -> None:
+    assert meme(body({RIGHT_WRIST: (0.47, 0.2), RIGHT_INDEX: (0.5, 0.12)})) == "FACEPALM"
+
+
+def test_mcavoy_hand_on_head_other_arm_out() -> None:
+    pose_ = body({RIGHT_WRIST: (0.46, 0.05), RIGHT_INDEX: (0.5, 0.0), LEFT_WRIST: (0.85, 0.3), LEFT_INDEX: (0.9, 0.3)})
+    assert meme(pose_) == "MCAVOY"
+    other_down = body({RIGHT_WRIST: (0.46, 0.05), RIGHT_INDEX: (0.5, 0.0)})
+    assert meme(other_down) != "MCAVOY"
+
+
+def test_shrek_side_eye() -> None:
+    turned_and_tilted = {NOSE: (0.535, 0.15), LEFT_EAR: (0.57, 0.15), RIGHT_EAR: (0.43, 0.11)}
+    assert meme(body(turned_and_tilted)) == "SHREK"
+    assert meme(body({NOSE: (0.535, 0.15)})) is None   # only turned (looking aside): not Shrek
 
 
 # --- picture switching -------------------------------------------------------------------------------

@@ -124,6 +124,11 @@ MEMES: dict[str, str] = {        # pose id -> picture in MEMES_DIR (missing file
     "LEO_POINTING": "leo_dicaprio.jpg",
     "SHRUG": "shrug.jpg",
     "ABSOLUTE_CINEMA": "absolute_cinema.jpg",
+    "FACEPALM": "facepalm.jpg",
+    "JACKIE_CHAN": "jackie.jpg",
+    "MCAVOY": "mcavoy.jpg",
+    "NO_WAYING": "nowaying.jpg",
+    "SHREK": "shrek.jpg",
 }
 MEME_KEY: int = ord("m")
 MEME_HOLD_MS: int = 400          # a pose must hold this long before its meme shows (no flicker)
@@ -132,6 +137,7 @@ MEME_BOX: tuple[int, int] = (320, 240)  # max picture size, px; the aspect ratio
 MEME_MARGIN: int = 20            # distance from the top-right corner, px
 MEME_SHOULDERS_PER_EARS: float = 2.0  # shoulder width ~ 2x ear-to-ear, when the shoulders are out of view
 MEME_MOUTH_DIST: float = 0.25    # fingertip this close to the mouth center = at the lips
+MEME_SHUSH_ABOVE: float = 0.05   # shush: fingertip above the mouth's middle (finger across the lips); else monkey
 MEME_TEMPLE_DIST: float = 0.3    # fingertip this close to a temple (between outer eye and ear)
 MEME_GENDO_HANDS: float = 0.7    # both hands' centers this close together...
 MEME_GENDO_MOUTH: float = 0.6    # ...and their midpoint this close to the mouth
@@ -146,6 +152,16 @@ MEME_SHRUG_HIGH: float = 1.6     # ...and this far below them...
 MEME_SHRUG_ELBOW_DEG: float = 140.0  # ...with both elbows bent below this angle
 MEME_CINEMA_OUT: float = 0.3     # absolute cinema: wrists this far outside the shoulders...
 MEME_CINEMA_HIGH: float = 0.3    # ...and no lower than this below shoulder height
+MEME_HEAD_SIDE_X: float = 0.4    # hands at the head: each hand within this of its ear, sideways...
+MEME_HEAD_HEIGHT: float = 0.3    # ...and at least this far above its shoulder
+MEME_ELBOWS_HIGH: float = 0.15   # elbows no lower than this below the shoulders = raised (behind the head)...
+MEME_ELBOWS_OUT: float = 0.25    # ...and this far out to the sides; lower elbows = hands at the temples
+MEME_FACEPALM_DIST: float = 0.35 # hand this close to the eyes = palm over the face
+MEME_HEAD_TOP: float = 0.2       # hand on the head: at least this far above the eyes...
+MEME_HEAD_TOP_X: float = 0.45    # ...and within this of them sideways
+MEME_MCAVOY_OUT: float = 0.3     # ...while the other hand is this far outside its shoulder
+MEME_SHREK_YAW: float = 0.2      # head turned: nose off the ears' middle by this share of the ear span...
+MEME_SHREK_ROLL: float = 0.12    # ...and tilted: one ear lower by this share
 
 # Smoothing (One Euro Filter on normalized coords)
 # Tune by eye: jitter at rest -> lower MIN_CUTOFF; lag on fast moves -> raise BETA.
