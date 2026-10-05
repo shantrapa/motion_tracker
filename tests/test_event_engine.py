@@ -7,16 +7,15 @@ from tests.test_body_state import pose
 
 def test_debounce_needs_a_hold_both_ways() -> None:
     d = Debounce(hold_ms=250)
-    up = State.BOTH_ARMS_UP
-    assert d.update({up}, 0) == set()
-    assert d.update({up}, 200) == set() and d.active == set()
-    assert d.update({up}, 250) == {up} and d.active == {up}
-    assert d.update({up}, 300) == set()                        # entered once
-    assert d.update(set(), 400) == set() and d.active == {up}  # brief drop is ignored
-    assert d.update({up}, 450) == set()
+    up, none = State.BOTH_ARMS_UP, (set(), set())
+    assert d.update({up}, 0) == none
+    assert d.update({up}, 200) == none and d.active == set()
+    assert d.update({up}, 250) == ({up}, set()) and d.active == {up}
+    assert d.update({up}, 300) == none                        # entered once
+    assert d.update(set(), 400) == none and d.active == {up}  # brief drop is ignored
+    assert d.update({up}, 450) == none
     d.update(set(), 500)
-    d.update(set(), 760)
-    assert d.active == set()
+    assert d.update(set(), 760) == (set(), {up}) and d.active == set()
 
 
 def test_cooldown_per_event_type() -> None:
@@ -27,9 +26,14 @@ def test_cooldown_per_event_type() -> None:
     assert c.allow(EventType.LEFT_PUNCH, 0) and c.allow(EventType.LEFT_PUNCH, 1)  # no cooldown configured
 
 
-def run(frames: list[PoseFrame]) -> list[EventType]:
+# Person tracking events show up in every sequence; tests look at the events they are about.
+BACKGROUND = {EventType.PERSON_DETECTED, EventType.PERSON_LOST}
+
+
+def run(frames: list[PoseFrame], only: set[EventType] | None = None) -> list[EventType]:
     engine = GestureEngine()
-    return [e.type for f in frames for e in engine.update_pose(f, aspect=1.0)]
+    kinds = [e.type for f in frames for e in engine.update_pose(f, aspect=1.0)]
+    return [k for k in kinds if (k in only if only else k not in BACKGROUND)]
 
 
 def frames_dy(dys: list[float]) -> list[PoseFrame]:
@@ -39,13 +43,15 @@ def frames_dy(dys: list[float]) -> list[PoseFrame]:
 
 def test_held_state_emits_its_transition_once() -> None:
     up = {LEFT_WRIST: (0.62, 0.1), RIGHT_WRIST: (0.38, 0.1)}
-    assert run([pose(up, t=i * 33) for i in range(30)]) == [EventType.BOTH_ARMS_RAISED]
+    assert run([pose(up, t=i * 33) for i in range(30)]) == [
+        EventType.LEFT_ARM_RAISED, EventType.RIGHT_ARM_RAISED, EventType.BOTH_ARMS_RAISED,
+    ]
 
 
 def test_jump_is_detected_once() -> None:
     stand = [0.0] * 30
     up = [-0.03, -0.07, -0.1, -0.1, -0.1, -0.06, -0.02, 0.0]  # 0.1 = half a shoulder width
-    assert run(frames_dy(stand + up + stand)) == [EventType.JUMP]
+    assert run(frames_dy(stand + up + stand)) == [EventType.JUMP, EventType.LAND]
 
 
 def test_repeated_squats_are_not_jumps() -> None:
@@ -84,7 +90,8 @@ def test_events_carry_time_and_confidence() -> None:
     engine = GestureEngine()
     up = {LEFT_WRIST: (0.62, 0.1), RIGHT_WRIST: (0.38, 0.1)}
     events = [e for i in range(30) for e in engine.update_pose(pose(up, t=i * 33), aspect=1.0)]
-    assert len(events) == 1
-    assert events[0].timestamp_ms == 264  # first frame at or past the 250 ms hold
-    assert events[0].confidence == 0.9
-    assert engine.states == {State.BOTH_ARMS_UP}
+    raised = [e for e in events if e.type == EventType.BOTH_ARMS_RAISED]
+    assert len(raised) == 1
+    assert raised[0].timestamp_ms == 264  # first frame at or past the 250 ms hold
+    assert raised[0].confidence == 0.9
+    assert State.BOTH_ARMS_UP in engine.states

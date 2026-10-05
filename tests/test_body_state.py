@@ -28,16 +28,25 @@ def pose(changes: dict | None = None, t: int = 0, dy: float = 0.0, hidden: tuple
 
 
 def states_of(changes: dict | None = None, **kw) -> set[State]:
-    return set(classify(pose(changes, **kw), aspect=1.0, min_visibility=0.5))
+    """Upper-body states only: the neutral figure stands with straight legs, which is not what these tests check."""
+    return set(classify(pose(changes, **kw), aspect=1.0, min_visibility=0.5)) - {State.STANDING}
 
 
 def test_neutral_stance_has_no_state() -> None:
     assert states_of() == set()
 
 
-def test_both_arms_up() -> None:
-    assert states_of({LEFT_WRIST: (0.62, 0.1), RIGHT_WRIST: (0.38, 0.1)}) == {State.BOTH_ARMS_UP}
-    assert states_of({LEFT_WRIST: (0.62, 0.1)}) == set()  # one hand is not enough
+def test_arms_up_each_and_both() -> None:
+    up = {State.LEFT_ARM_UP, State.RIGHT_ARM_UP, State.BOTH_ARMS_UP}
+    assert states_of({LEFT_WRIST: (0.62, 0.1), RIGHT_WRIST: (0.38, 0.1)}) == up
+    assert states_of({LEFT_WRIST: (0.62, 0.1)}) == {State.LEFT_ARM_UP}  # one hand: not both
+    assert states_of({RIGHT_WRIST: (0.38, 0.1)}) == {State.RIGHT_ARM_UP}
+
+
+def test_standing_needs_straight_legs() -> None:
+    assert set(classify(pose(), 1.0, 0.5)) == {State.STANDING}
+    half_bent = {LEFT_KNEE: (0.62, 0.78), RIGHT_KNEE: (0.38, 0.78)}  # ~150 deg: neither standing nor squatting
+    assert set(classify(pose(half_bent), 1.0, 0.5)) == set()
 
 
 def test_t_pose() -> None:
@@ -63,8 +72,8 @@ def test_lean_falls_back_to_shoulder_roll_without_hips() -> None:
 def test_aspect_is_applied_to_angles() -> None:
     # 9 deg of tilt in a square frame; the same normalized numbers in a 16:9 frame are 15.6 deg.
     tilt = {LEFT_SHOULDER: (0.6475, 0.3), RIGHT_SHOULDER: (0.4475, 0.3)}
-    assert classify(pose(tilt), aspect=1.0, min_visibility=0.5) == {}
-    assert set(classify(pose(tilt), aspect=16 / 9, min_visibility=0.5)) == {State.LEAN_LEFT}
+    assert set(classify(pose(tilt), aspect=1.0, min_visibility=0.5)) == {State.STANDING}
+    assert set(classify(pose(tilt), aspect=16 / 9, min_visibility=0.5)) == {State.LEAN_LEFT, State.STANDING}
 
 
 def test_squatting_by_knee_angle() -> None:

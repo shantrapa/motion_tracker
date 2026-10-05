@@ -42,7 +42,11 @@ def classify(pose: PoseFrame, aspect: float, min_visibility: float) -> dict[Stat
     if visible(*wrists):
         lw, rw = iso(lm[LEFT_WRIST], aspect), iso(lm[RIGHT_WRIST], aspect)
         margin = config.HANDS_UP_MARGIN * sw
-        if lw[1] < ls[1] - margin and rw[1] < rs[1] - margin:
+        if lw[1] < ls[1] - margin:
+            found[State.LEFT_ARM_UP] = conf(*shoulders, LEFT_WRIST)
+        if rw[1] < rs[1] - margin:
+            found[State.RIGHT_ARM_UP] = conf(*shoulders, RIGHT_WRIST)
+        if State.LEFT_ARM_UP in found and State.RIGHT_ARM_UP in found:
             found[State.BOTH_ARMS_UP] = conf(*shoulders, *wrists)
         # The person's left is +x in the raw (unmirrored) frame, so "outward" is +x for the left arm.
         reach, tol = config.ARMS_OUT_REACH * sw, config.ARMS_OUT_Y_TOL * sw
@@ -74,4 +78,6 @@ def classify(pose: PoseFrame, aspect: float, min_visibility: float) -> dict[Stat
         ]
         if all(k < config.SQUAT_KNEE_DEG for k in knees):
             found[State.SQUATTING] = conf(*legs)
+        elif all(k > config.STAND_KNEE_DEG for k in knees):
+            found[State.STANDING] = conf(*legs)
     return found

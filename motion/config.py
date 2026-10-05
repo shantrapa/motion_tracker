@@ -68,6 +68,22 @@ PUNCH_COOLDOWN_MS: int = 400     # one punch per arm per this period
 JUMP_COOLDOWN_MS: int = 500      # one jump per this period
 EVENT_SHOW_S: float = 1.0        # how long an event banner stays on screen
 
+# Gesture engine MVP (stage 9b, docs/MOTION_GESTURES_SPEC.md §62). Lengths in shoulder widths unless noted.
+STAND_KNEE_DEG: float = 160.0    # both knees straighter than this = STANDING (ends a squat rep)
+FINGER_EXT_RATIO: float = 1.15   # finger extended if wrist->tip > this x wrist->middle joint
+MOTION_HISTORY_MS: int = 1500    # wrist trajectory kept for swipe and wave (spec §56)
+SWIPE_WINDOW_MS: int = 400       # a swipe must happen within this time...
+SWIPE_MIN_DIST: float = 1.2      # ...covering at least this horizontal distance
+SWIPE_DIR_RATIO: float = 2.0     # ...and this many times more horizontal than vertical
+SWIPE_COOLDOWN_MS: int = 500
+WAVE_REVERSALS: int = 3          # direction changes needed within MOTION_HISTORY_MS
+WAVE_MIN_AMP: float = 0.3        # each swing at least this wide
+WAVE_COOLDOWN_MS: int = 1500
+CLAP_APART: float = 1.0          # wrists this far apart arm the clap
+CLAP_TOUCH: float = 0.5          # ...and closer than this fire it
+CLAP_SPEED: float = 2.0          # closing speed at the touch, shoulder widths/s
+CLAP_COOLDOWN_MS: int = 300
+
 # Smoothing (One Euro Filter on normalized coords)
 # Tune by eye: jitter at rest -> lower MIN_CUTOFF; lag on fast moves -> raise BETA.
 ONE_EURO_MIN_CUTOFF: float = 1.0  # Hz

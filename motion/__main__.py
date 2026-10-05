@@ -212,7 +212,7 @@ def main() -> int:
                 f"pose {metrics.tracking_fps:.1f} fps, {fmt(metrics.latency_ms, '.0f', '-')} ms",
                 f"hands {hands_text} [h]",
                 f"model {args.model} | filter {'on' if use_filter else 'off'} [f] | scene {'on' if show_scene else 'off'} [g]",
-                f"states: {', '.join(sorted(s.name for s in engine.states)) or '-'}",
+                f"states: {', '.join(sorted(s.name for s in engine.states if not s.name.endswith('VISIBLE'))) or '-'}",
             ])
             if now < banner_until:
                 renderer.draw_banner(view, banner)
