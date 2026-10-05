@@ -1,5 +1,5 @@
 """Arm and hand gestures over several frames. Pure Python.
-Spec §20 (swipe), §21 (wave), §22 (punch), §26 (clap). Positions are isotropic (geometry.iso),
+Spec §20 (swipe), §21 (wave), §22 (punch), §23-24 (push, pull), §26 (clap), §28 (throw). Positions are isotropic (geometry.iso),
 lengths in shoulder widths. Cooldowns live in the event engine."""
 
 import math
@@ -47,22 +47,63 @@ class PunchDetector:
 
 
 class SwipeDetector:
-    """A fast, mostly horizontal wrist stroke. Returns +1 toward +x (the person's own left), -1 the other way.
-    Samples up to the last swipe are ignored, so one stroke fires once."""
+    """A fast, straight wrist stroke along one axis. Returns "LEFT" / "RIGHT" (anatomical: +x in the raw frame
+    is the person's own left), "UP" or "DOWN". Feed it wrist positions relative to the shoulders, so the
+    body moving (jump, squat, lean) does not count. Samples up to the last swipe are ignored: one stroke, one swipe."""
 
     def __init__(self) -> None:
         self._after_ms = -1
 
-    def update(self, history: MotionHistory, unit: float, now_ms: int) -> int | None:
+    def update(self, history: MotionHistory, unit: float, now_ms: int) -> str | None:
         samples = history.since(max(now_ms - config.SWIPE_WINDOW_MS, self._after_ms + 1))
         if len(samples) < 2:
             return None
         (_, start), (_, end) = samples[0], samples[-1]
         dx, dy = (end[0] - start[0]) / unit, (end[1] - start[1]) / unit
-        if abs(dx) < config.SWIPE_MIN_DIST or abs(dx) < config.SWIPE_DIR_RATIO * abs(dy):
+        if abs(dx) >= config.SWIPE_MIN_DIST and abs(dx) >= config.SWIPE_DIR_RATIO * abs(dy):
+            direction = "LEFT" if dx > 0 else "RIGHT"
+        elif abs(dy) >= config.SWIPE_MIN_DIST and abs(dy) >= config.SWIPE_DIR_RATIO * abs(dx):
+            direction = "UP" if dy < 0 else "DOWN"  # y grows downward
+        else:
             return None
         self._after_ms = now_ms
-        return 1 if dx > 0 else -1
+        return direction
+
+
+def recent_speed(history: MotionHistory, unit: float, now_ms: int, window_ms: int) -> float:
+    """Average speed over the last window_ms, in units per second (0 if there is not enough history)."""
+    samples = history.since(now_ms - window_ms)
+    if len(samples) < 2 or samples[-1][0] <= samples[0][0]:
+        return 0.0
+    (t0, p0), (t1, p1) = samples[0], samples[-1]
+    return math.dist(p0, p1) / unit / ((t1 - t0) / 1000)
+
+
+class PushPullDetector:
+    """Hand coming toward / going away from the camera, judged by the palm's size on the frame: one camera
+    cannot see depth, but things get bigger as they come closer. Much steadier than MediaPipe's z.
+    Returns "PUSH" (open palm grew), "PULL" (palm shrank) or None."""
+
+    def __init__(self) -> None:
+        self.history = MotionHistory(config.PUSH_WINDOW_MS)
+        self._after_ms = -1
+
+    def reset(self) -> None:
+        self.history.clear()
+
+    def update(self, palm: float, open_palm: bool, now_ms: int) -> str | None:
+        self.history.add(now_ms, (palm,))
+        sizes = [v[0] for _, v in self.history.since(self._after_ms + 1)]
+        if len(sizes) < 2 or min(sizes) <= 0:
+            return None
+        if open_palm and palm >= (1 + config.PUSH_SCALE) * min(sizes):
+            result = "PUSH"
+        elif palm <= (1 - config.PULL_SCALE) * max(sizes):
+            result = "PULL"
+        else:
+            return None
+        self._after_ms = now_ms
+        return result
 
 
 def reversals(xs: list[float], amp: float) -> int:

@@ -13,8 +13,11 @@ This is a desktop prototype for studying motion-tracking mechanics. The pure-log
 - **Smoothing:** a [One Euro Filter](https://gery.casiez.net/1euro/) on every coordinate of the pose and the fingers. Steady at rest, no visible lag on fast moves.
 - **Metrics:** render FPS, tracking FPS and median latency, shown on screen and optionally logged to CSV.
 - **Video files:** the same pipeline over a recording, deterministic, for comparing settings on identical input.
-- **Scene:** hand circles and fingertips push a ball around; pinch it (thumb + index) to pick it up, open the fingers to throw it; holding a raised hand on the button resets it.
-- **Poses and actions:** hands up, arms out, lean left/right, squat (held poses), plus jump and punch (movements), shown on screen as they happen.
+- **Scene:** hand circles and fingertips push a ball around; pinch it (thumb + index) or close your fist on it to pick it up, open the hand to throw it; holding a raised hand on the button resets it.
+- **Gestures and actions** (per [docs/MOTION_GESTURES_SPEC.md](docs/MOTION_GESTURES_SPEC.md)), shown on screen as they happen:
+  - body: person detected/lost, each arm raised/lowered, both arms up, T-pose, lean left/right, squat + squat reps, jump + land;
+  - arms: punch, swipe left/right/up/down, wave, clap, throw;
+  - hands: open palm, fist, point, pinch and grab (started / released / cancelled), push and pull.
 
 ## Requirements
 
@@ -77,8 +80,8 @@ capture → tracker → smoothing → renderer
 | `scene.py` | ball physics, pushes, pinch grab and throw, dwell button |
 | `events.py` | `State`, `EventType`, `GestureEvent` (type, time, confidence) |
 | `body_state.py` | body states in one frame: arms up, T-pose, lean, squat |
-| `hand_state.py` | pinch with started / released / cancelled lifecycle |
-| `action_detector.py`, `gesture_detector.py` | jump and punch over several frames |
+| `hand_state.py` | finger states, hand shapes, palm size; pinch and grab with started / released / cancelled lifecycle |
+| `action_detector.py`, `gesture_detector.py`, `motion_history.py` | movements over several frames: jump, punch, swipe, wave, clap, push/pull |
 | `event_engine.py` | debounce, cooldowns, `GestureEngine` turning states and detector hits into events |
 | `metrics.py` | FPS and latency over a time window |
 | `renderer.py` | all OpenCV drawing and the window |

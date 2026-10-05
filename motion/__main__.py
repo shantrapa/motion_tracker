@@ -135,11 +135,14 @@ def main() -> int:
                 raw, smoothed = latest, smoother(latest)
                 # Always on the smoothed pose (independent of the 'f' toggle): fewer false triggers.
                 events += engine.update_pose(smoothed, aspect)
-            shown = [e.type.name.replace("_", " ") for e in events if "PINCH" not in e.type.name]  # pinch has its own dot
+            # Pinch and grab have their own dot on the hand.
+            shown = [e.type.name.replace("_", " ") for e in events if "PINCH" not in e.type.name and "GRAB" not in e.type.name]
             if shown:
                 banner, banner_until = " + ".join(shown), time.monotonic() + config.EVENT_SHOW_S
+            kinds = {e.type for e in events}
             cancelled = frozenset(
-                side for side in ("left", "right") if EventType[f"{side.upper()}_PINCH_CANCELLED"] in {e.type for e in events}
+                side for side in ("left", "right")
+                if {EventType[f"{side.upper()}_PINCH_CANCELLED"], EventType[f"{side.upper()}_GRAB_CANCELLED"]} & kinds
             )
             pose = smoothed if use_filter else raw
             if is_new:
@@ -160,16 +163,16 @@ def main() -> int:
                 side: geometry.display_points(hand, width, height, 0.0) if hand and pose_tracker.hands_enabled else None
                 for side, hand in (smooth_fingers if use_filter else raw_fingers).items()
             }
-            pinches = {
-                side: geometry.to_display(p, width, height) if (p := engine.pinch_point(side)) else None
+            grips = {
+                side: geometry.to_display(p, width, height) if (p := engine.grip_point(side)) else None
                 for side in ("left", "right")
             }
             for side, points in fingers.items():
                 if points:
                     color = renderer.SIDE_COLORS[side]
                     renderer.draw_skeleton(view, points, HAND_SKELETON, color, color, 3)
-                    if pinches[side]:
-                        renderer.draw_pinch(view, pinches[side])
+                    if grips[side]:
+                        renderer.draw_pinch(view, grips[side])
             left, right = (geometry.to_display(c, width, height) if c else None for c in circles.values())
             if show_scene:
                 if world is None:
@@ -189,7 +192,7 @@ def main() -> int:
                     for tip in HAND_FINGERTIPS:
                         p = points[tip] if points else None
                         colliders[f"{side}:tip{tip}"] = (p, config.FINGERTIP_RADIUS) if p else None
-                world.update(colliders, pinches, time.monotonic(), cancelled)
+                world.update(colliders, grips, time.monotonic(), cancelled)
                 renderer.draw_button(view, world.button_center, config.BUTTON_RADIUS, world.button_progress, world.presses)
                 renderer.draw_ball(view, (world.ball.x, world.ball.y), config.BALL_RADIUS, held=world.held_by is not None)
             renderer.draw_hands(view, left, right, config.HAND_CIRCLE_RADIUS)

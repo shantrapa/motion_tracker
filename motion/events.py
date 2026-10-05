@@ -23,6 +23,10 @@ class State(Enum):
     RIGHT_OPEN_PALM = auto()
     RIGHT_FIST = auto()
     RIGHT_POINT = auto()
+    LEFT_PINCH = auto()   # lifecycle states: active between STARTED and RELEASED/CANCELLED, no debounce
+    RIGHT_PINCH = auto()
+    LEFT_GRAB = auto()
+    RIGHT_GRAB = auto()
 
 
 class EventType(Enum):
@@ -58,6 +62,13 @@ class EventType(Enum):
     RIGHT_PINCH_STARTED = auto()
     RIGHT_PINCH_RELEASED = auto()
     RIGHT_PINCH_CANCELLED = auto()
+    # grab (closing the hand)
+    LEFT_GRAB_STARTED = auto()
+    LEFT_GRAB_RELEASED = auto()
+    LEFT_GRAB_CANCELLED = auto()
+    RIGHT_GRAB_STARTED = auto()
+    RIGHT_GRAB_RELEASED = auto()
+    RIGHT_GRAB_CANCELLED = auto()
     # actions
     JUMP = auto()                   # take-off
     LAND = auto()
@@ -68,6 +79,16 @@ class EventType(Enum):
     LEFT_SWIPE_RIGHT = auto()
     RIGHT_SWIPE_LEFT = auto()
     RIGHT_SWIPE_RIGHT = auto()
+    LEFT_SWIPE_UP = auto()
+    LEFT_SWIPE_DOWN = auto()
+    RIGHT_SWIPE_UP = auto()
+    RIGHT_SWIPE_DOWN = auto()
+    LEFT_PUSH = auto()              # open palm toward the camera
+    LEFT_PULL = auto()
+    RIGHT_PUSH = auto()
+    RIGHT_PULL = auto()
+    LEFT_THROW = auto()             # hand opened while moving fast
+    RIGHT_THROW = auto()
     LEFT_WAVE = auto()
     RIGHT_WAVE = auto()
     CLAP = auto()

@@ -58,7 +58,11 @@ def hands_events(frames: list[dict], start_ms: int = 0) -> list[EventType]:
 
 def test_hand_detected_shape_and_lost() -> None:
     frames = [{"left": make_hand(ALL)}] * 10 + [{"left": make_hand(set())}] * 10 + [{}] * 10
-    assert hands_events(frames) == [E.LEFT_HAND_DETECTED, E.LEFT_OPEN_PALM, E.LEFT_FIST, E.LEFT_HAND_LOST]
+    # GRAB is a lifecycle, not a debounced state: it starts on the first fist frame and is cancelled
+    # (not released) on the first frame without the hand.
+    assert hands_events(frames) == [
+        E.LEFT_HAND_DETECTED, E.LEFT_OPEN_PALM, E.LEFT_GRAB_STARTED, E.LEFT_FIST, E.LEFT_GRAB_CANCELLED, E.LEFT_HAND_LOST,
+    ]
 
 
 # --- tracking and arms -------------------------------------------------------------------------
@@ -71,7 +75,8 @@ def test_person_detected_and_lost() -> None:
 def test_one_arm_raised_then_lowered() -> None:
     up = {RIGHT_WRIST: (0.38, 0.1)}
     frames = [pose(up, t=i * 33) for i in range(10)] + [pose(t=330 + i * 33) for i in range(10)]
-    assert run(frames) == [E.RIGHT_ARM_RAISED, E.RIGHT_ARM_LOWERED]
+    # The instant drop is also a fast stroke down (RIGHT_SWIPE_DOWN); this test is about the arm states.
+    assert run(frames, only={E.RIGHT_ARM_RAISED, E.RIGHT_ARM_LOWERED}) == [E.RIGHT_ARM_RAISED, E.RIGHT_ARM_LOWERED]
 
 
 def test_squat_rep() -> None:

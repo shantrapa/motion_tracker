@@ -14,8 +14,10 @@ from motion.contract import (
 )
 from motion.events import STATE_ENTERED, STATE_EXITED, EventType, GestureEvent, State
 from motion.geometry import Hand, NormPoint, iso
-from motion.gesture_detector import ClapDetector, PunchDetector, SwipeDetector, WaveDetector
-from motion.hand_state import Pinch, hand_shape
+from motion.gesture_detector import (
+    ClapDetector, PunchDetector, PushPullDetector, SwipeDetector, WaveDetector, recent_speed,
+)
+from motion.hand_state import Grab, Pinch, hand_shape, palm_size
 from motion.motion_history import MotionHistory
 
 SIDES = ("left", "right")
@@ -81,21 +83,33 @@ class GestureEngine:
         self._wave = {side: WaveDetector() for side in SIDES}
         self._wrist_path = {side: MotionHistory(config.MOTION_HISTORY_MS) for side in SIDES}
         self._pinch = {side: Pinch(config.PINCH_ON, config.PINCH_OFF) for side in SIDES}
+        self._grab = {side: Grab(config.GRAB_ON_FOLDED, config.GRAB_OFF_FOLDED) for side in SIDES}
+        self._push = {side: PushPullDetector() for side in SIDES}
+        self._unit: float | None = None  # last shoulder width, for hand speed on the hand timeline
         cooldowns = {EventType.JUMP: config.JUMP_COOLDOWN_MS, EventType.CLAP: config.CLAP_COOLDOWN_MS}
         for side in ("LEFT", "RIGHT"):
             cooldowns[EventType[f"{side}_PUNCH"]] = config.PUNCH_COOLDOWN_MS
             cooldowns[EventType[f"{side}_WAVE"]] = config.WAVE_COOLDOWN_MS
-            for direction in ("LEFT", "RIGHT"):
+            cooldowns[EventType[f"{side}_PUSH"]] = config.PUSH_COOLDOWN_MS
+            cooldowns[EventType[f"{side}_PULL"]] = config.PUSH_COOLDOWN_MS
+            cooldowns[EventType[f"{side}_THROW"]] = config.THROW_COOLDOWN_MS
+            for direction in ("LEFT", "RIGHT", "UP", "DOWN"):
                 cooldowns[EventType[f"{side}_SWIPE_{direction}"]] = config.SWIPE_COOLDOWN_MS
         self._cooldown = Cooldown(cooldowns)
 
     @property
     def states(self) -> set[State]:
-        return self._body.active | self._hands.active
+        lifecycle = {State[f"{side.upper()}_PINCH"] for side in SIDES if self._pinch[side].active}
+        lifecycle |= {State[f"{side.upper()}_GRAB"] for side in SIDES if self._grab[side].active}
+        return self._body.active | self._hands.active | lifecycle
 
     def pinch_point(self, side: str) -> NormPoint | None:
         """Raw normalized pinch point while that hand pinches."""
         return self._pinch[side].point
+
+    def grip_point(self, side: str) -> NormPoint | None:
+        """Where that hand holds things: the pinch point, else the palm while grabbing (fist)."""
+        return self._pinch[side].point or self._grab[side].point
 
     def _emit(self, events: list[GestureEvent], kind: EventType, now_ms: int, confidence: float) -> None:
         if self._cooldown.allow(kind, now_ms):
@@ -143,6 +157,8 @@ class GestureEngine:
         unit = math.dist(iso(ls, aspect), iso(rs, aspect))  # shoulder width
         if unit < 1e-6:
             return events
+        self._unit = unit
+        mid = ((ls.x + rs.x) / 2 * aspect, (ls.y + rs.y) / 2)  # wrist paths are relative to this
 
         shoulders_conf = min(ls.visibility, rs.visibility)
         jump = self._jump.update((ls.y + rs.y) / 2, unit, now)
@@ -161,11 +177,11 @@ class GestureEngine:
             if self._punch[side].update(shoulder, seen_elbow, wrist, aspect, unit, now):
                 self._emit(events, EventType[f"{prefix}_PUNCH"], now, conf)
             path = self._wrist_path[side]
-            path.add(now, iso(wrist, aspect))
+            wx, wy = iso(wrist, aspect)
+            path.add(now, (wx - mid[0], wy - mid[1]))  # relative to the shoulders: body motion cancels out
             direction = self._swipe[side].update(path, unit, now)
             if direction is not None:
-                # +x in the raw frame is the person's own left.
-                self._emit(events, EventType[f"{prefix}_SWIPE_{'LEFT' if direction > 0 else 'RIGHT'}"], now, conf)
+                self._emit(events, EventType[f"{prefix}_SWIPE_{direction}"], now, conf)
             raised = elbow.visibility >= min_vis and wrist.y < elbow.y
             if self._wave[side].update(path, unit, raised, now):
                 self._emit(events, EventType[f"{prefix}_WAVE"], now, conf)
@@ -180,20 +196,39 @@ class GestureEngine:
     def update_hands(self, hands: dict[str, Hand | None], timestamp_ms: int, aspect: float) -> list[GestureEvent]:
         """hands: side -> 21 landmarks or None (hand not seen / tracking off).
         The hand model gates whole hands by presence and gives no per-point visibility: confidence 1.0."""
+        now = timestamp_ms
         events: list[GestureEvent] = []
         present: dict[State, float] = {}
+        shapes: dict[str, str | None] = {}
         for side in SIDES:
             hand = hands.get(side)
             if hand is None:
                 continue
             present[State[f"{side.upper()}_HAND_VISIBLE"]] = 1.0
-            shape = hand_shape(hand, aspect)
-            if shape is not None:
-                present[State[f"{side.upper()}_{shape}"]] = 1.0
-        self._transitions(events, self._hands, present, timestamp_ms)
+            shapes[side] = hand_shape(hand, aspect)
+            if shapes[side] is not None:
+                present[State[f"{side.upper()}_{shapes[side]}"]] = 1.0
+        self._transitions(events, self._hands, present, now)
 
         for side in SIDES:
-            change = self._pinch[side].update(hands.get(side), aspect)
-            if change is not None:
-                self._emit(events, EventType[f"{side.upper()}_PINCH_{change}"], timestamp_ms, 1.0)
+            hand, prefix = hands.get(side), side.upper()
+            for kind, lifecycle in (("PINCH", self._pinch[side]), ("GRAB", self._grab[side])):
+                if kind == "PINCH":
+                    change = lifecycle.update(hand, aspect, fist=shapes.get(side) == "FIST")
+                else:
+                    change = lifecycle.update(hand, aspect)
+                if change is None:
+                    continue
+                self._emit(events, EventType[f"{prefix}_{kind}_{change}"], now, 1.0)
+                # Opening the hand while it moves fast is a throw (spec §28); losing the hand is not.
+                if change == "RELEASED" and self._unit is not None:
+                    speed = recent_speed(self._wrist_path[side], self._unit, now, config.THROW_WINDOW_MS)
+                    if speed > config.THROW_SPEED:
+                        self._emit(events, EventType[f"{prefix}_THROW"], now, 1.0)
+            if hand is None:
+                self._push[side].reset()
+                continue
+            move = self._push[side].update(palm_size(hand, aspect), shapes.get(side) == "OPEN_PALM", now)
+            if move is not None:
+                self._emit(events, EventType[f"{prefix}_{move}"], now, 1.0)
         return events

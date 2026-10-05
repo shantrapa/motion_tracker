@@ -87,6 +87,17 @@ CLAP_TOUCH: float = 0.5          # ...and closer than this fire it
 CLAP_SPEED: float = 2.0          # closing speed at the touch, shoulder widths/s
 CLAP_COOLDOWN_MS: int = 300
 
+# Stage 10: hand and arm gestures (spec §63)
+GRAB_ON_FOLDED: int = 4          # fingers folded (of 4) to start a grab...
+GRAB_OFF_FOLDED: int = 2         # ...and at most this many to release it (hysteresis)
+PUSH_WINDOW_MS: int = 500        # palm size change must happen within this time
+PUSH_SCALE: float = 0.25         # open palm grows by this fraction = moved toward the camera
+PULL_SCALE: float = 0.2          # palm shrinks by this fraction = moved away
+PUSH_COOLDOWN_MS: int = 600
+THROW_WINDOW_MS: int = 150       # hand speed at release is measured over this time
+THROW_SPEED: float = 3.0         # shoulder widths/s at the moment the hand opens
+THROW_COOLDOWN_MS: int = 500
+
 # Smoothing (One Euro Filter on normalized coords)
 # Tune by eye: jitter at rest -> lower MIN_CUTOFF; lag on fast moves -> raise BETA.
 ONE_EURO_MIN_CUTOFF: float = 1.0  # Hz

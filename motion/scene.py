@@ -1,7 +1,7 @@
 """Interactive scene driven by the hands. Display pixel coordinates, y down. Pure Python.
 
-Colliders (hand circles, fingertips) push the ball; a pinch inside the ball picks it up,
-releasing the pinch throws it with the hand's velocity; losing the hand while holding just drops it."""
+Colliders (hand circles, fingertips) push the ball; a grip (pinch or fist) inside the ball picks it up,
+opening the hand throws it with the hand's velocity; losing the hand while holding just drops it."""
 
 import math
 from dataclasses import dataclass
@@ -77,7 +77,7 @@ class Scene:
         self.ball = Ball(width / 2, height / 2)
         self.presses = 0
         self.button_progress = 0.0  # 0..1 while a hand dwells on the button
-        self.held_by: str | None = None  # side whose pinch holds the ball
+        self.held_by: str | None = None  # side whose grip holds the ball
         self._hand_still_s = hand_still_s
         self._motion: dict[str, _HandMotion] = {}  # velocity of every collider and pinch, by name
         self._last_s: float | None = None
@@ -96,31 +96,31 @@ class Scene:
     def update(
         self,
         colliders: dict[str, Collider | None],
-        pinches: dict[str, Vec | None],
+        grips: dict[str, Vec | None],
         now_s: float,
         cancelled: frozenset[str] = frozenset(),
     ) -> list[str]:
-        """colliders: name -> (center, radius) or None; pinches: side -> pinch point or None (not pinching);
-        cancelled: sides whose pinch ended because the hand was lost (spec §68), not opened.
+        """colliders: name -> (center, radius) or None; grips: side -> grip point (pinch or fist) or None;
+        cancelled: sides whose grip ended because the hand was lost (spec §68), not opened.
         Returns events ("button")."""
         dt = 0.0 if self._last_s is None else min(max(now_s - self._last_s, 0.0), self.max_dt)
         self._last_s = now_s
         velocities = {name: self._velocity(name, c[0] if c else None, now_s) for name, c in colliders.items()}
-        pinch_v = {side: self._velocity(f"pinch:{side}", p, now_s) for side, p in pinches.items()}
+        grip_v = {side: self._velocity(f"grip:{side}", p, now_s) for side, p in grips.items()}
 
         b = self.ball
         if self.held_by is not None:
-            point = pinches.get(self.held_by)
+            point = grips.get(self.held_by)
             if point is None:
                 # Opened: throw with the hand's velocity. Lost: a tracking glitch is not a throw, just let go.
                 lost = self.held_by in cancelled
-                b.vx, b.vy = (0.0, 0.0) if lost else self._cap(pinch_v.get(self.held_by, (0.0, 0.0)))
+                b.vx, b.vy = (0.0, 0.0) if lost else self._cap(grip_v.get(self.held_by, (0.0, 0.0)))
                 self.held_by = None
             else:
                 b.x, b.y = self._inside(point)
-                b.vx, b.vy = self._cap(pinch_v[self.held_by])
+                b.vx, b.vy = self._cap(grip_v[self.held_by])
         if self.held_by is None:
-            for side, point in pinches.items():
+            for side, point in grips.items():
                 if point is not None and math.hypot(point[0] - b.x, point[1] - b.y) <= self.ball_radius:
                     self.held_by = side
                     b.x, b.y = self._inside(point)
