@@ -26,7 +26,7 @@ def main() -> int:
     args = parse_args()
     try:
         from motion import capture, geometry, renderer, smoothing, tracker
-        from motion.contract import HAND_SKELETON, SKELETON
+        from motion.contract import HAND_SKELETON, NUM_HAND_LANDMARKS, SKELETON
     except ModuleNotFoundError as e:
         print(f"error: missing dependency '{e.name}', run: python -m pip install mediapipe", file=sys.stderr)
         return 1
@@ -71,6 +71,16 @@ def main() -> int:
     raw: PoseFrame | None = None
     smoothed: PoseFrame | None = None
     last_hands: HandsFrame | None = None
+    # Finger filters are keyed by side, not by detection order, which changes between results.
+    finger_smoothers = {
+        side: smoothing.LandmarksSmoother(
+            NUM_HAND_LANDMARKS, config.ONE_EURO_MIN_CUTOFF, config.ONE_EURO_BETA,
+            config.ONE_EURO_D_CUTOFF, config.FILTER_RESET_MS,
+        )
+        for side in ("left", "right")
+    }
+    raw_fingers: dict[str, geometry.Hand | None] = {"left": None, "right": None}
+    smooth_fingers: dict[str, geometry.Hand | None] = {"left": None, "right": None}
     show_skeleton = True
     use_filter = True
     failures = 0
@@ -99,6 +109,12 @@ def main() -> int:
             if latest_hands is not None and latest_hands is not last_hands:
                 last_hands = latest_hands
                 hand_metrics.on_result(latency(latest_hands.timestamp_ms))
+                # Match on raw pose: same (unfiltered) timeline as the hand results.
+                raw_fingers = geometry.assign_hands(raw, latest_hands)
+                smooth_fingers = {
+                    side: finger_smoothers[side](hand, latest_hands.timestamp_ms) if hand else None
+                    for side, hand in raw_fingers.items()
+                }
 
             latest = pose_tracker.latest_pose()
             is_new = latest is not None and (raw is None or latest.timestamp_ms != raw.timestamp_ms)
@@ -122,8 +138,7 @@ def main() -> int:
                 )
                 renderer.draw_skeleton(view, points, SKELETON)
             if pose_tracker.hands_enabled:
-                # Match on raw pose: same (unfiltered) timeline as the hand results.
-                for side, hand in geometry.assign_hands(raw, last_hands).items():
+                for side, hand in (smooth_fingers if use_filter else raw_fingers).items():
                     if hand:
                         color = renderer.SIDE_COLORS[side]
                         points = geometry.display_points(hand, width, height, 0.0)

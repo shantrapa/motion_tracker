@@ -37,29 +37,36 @@ class OneEuroFilter:
         return self._x
 
 
-class PoseSmoother:
-    """Filters x, y, z of every landmark. Call once per new PoseFrame; returns a new PoseFrame.
-    Filters reset when the pose was missing longer than reset_ms."""
+class LandmarksSmoother:
+    """Filters x, y, z of a fixed-size set of landmarks (a pose or one hand). Call once per new result.
+    Filters reset when the landmarks were missing longer than reset_ms."""
 
-    def __init__(self, min_cutoff: float, beta: float, d_cutoff: float, reset_ms: int) -> None:
+    def __init__(self, count: int, min_cutoff: float, beta: float, d_cutoff: float, reset_ms: int) -> None:
         self.reset_ms = reset_ms
         self._filters = [
-            tuple(OneEuroFilter(min_cutoff, beta, d_cutoff) for _ in range(3)) for _ in range(NUM_LANDMARKS)
+            tuple(OneEuroFilter(min_cutoff, beta, d_cutoff) for _ in range(3)) for _ in range(count)
         ]
         self._last_seen_ms: int | None = None
+
+    def __call__(self, landmarks: tuple[Landmark, ...], timestamp_ms: int) -> tuple[Landmark, ...]:
+        if self._last_seen_ms is not None and timestamp_ms - self._last_seen_ms > self.reset_ms:
+            for fx, fy, fz in self._filters:
+                fx.reset(), fy.reset(), fz.reset()
+        self._last_seen_ms = timestamp_ms
+        t = timestamp_ms / 1000.0
+        return tuple(
+            Landmark(fx(lm.x, t), fy(lm.y, t), fz(lm.z, t), lm.visibility)
+            for lm, (fx, fy, fz) in zip(landmarks, self._filters)
+        )
+
+
+class PoseSmoother:
+    """Smooths a PoseFrame into a new PoseFrame; frames without a person pass through."""
+
+    def __init__(self, min_cutoff: float, beta: float, d_cutoff: float, reset_ms: int) -> None:
+        self._smoother = LandmarksSmoother(NUM_LANDMARKS, min_cutoff, beta, d_cutoff, reset_ms)
 
     def __call__(self, pose: PoseFrame) -> PoseFrame:
         if pose.landmarks is None:
             return pose
-        if self._last_seen_ms is not None and pose.timestamp_ms - self._last_seen_ms > self.reset_ms:
-            for fx, fy, fz in self._filters:
-                fx.reset(), fy.reset(), fz.reset()
-        self._last_seen_ms = pose.timestamp_ms
-        t = pose.timestamp_ms / 1000.0
-        return PoseFrame(
-            pose.timestamp_ms,
-            tuple(
-                Landmark(fx(lm.x, t), fy(lm.y, t), fz(lm.z, t), lm.visibility)
-                for lm, (fx, fy, fz) in zip(pose.landmarks, self._filters)
-            ),
-        )
+        return PoseFrame(pose.timestamp_ms, self._smoother(pose.landmarks, pose.timestamp_ms))

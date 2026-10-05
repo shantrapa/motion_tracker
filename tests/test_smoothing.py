@@ -2,7 +2,7 @@ import random
 import statistics
 
 from motion.contract import NUM_LANDMARKS, Landmark, PoseFrame
-from motion.smoothing import OneEuroFilter, PoseSmoother
+from motion.smoothing import LandmarksSmoother, OneEuroFilter, PoseSmoother
 
 RATE_HZ = 25  # roughly the tracker's result rate
 
@@ -52,3 +52,12 @@ def test_pose_smoother_resets_after_long_gap() -> None:
     s(pose(0, 0.1))
     s(pose(40, 0.1))
     assert s(pose(600, 0.9)).landmarks[0].x == 0.9  # restarted, no interpolation from 0.1
+
+
+def test_landmarks_smoother_keeps_count_and_visibility() -> None:
+    s = LandmarksSmoother(21, 1.0, 9.0, 1.0, reset_ms=500)
+    hand = tuple(Landmark(0.4, 0.6, 0.1, 1.0) for _ in range(21))
+    out = s(hand, 0)
+    assert out == hand
+    moved = s(tuple(Landmark(0.5, 0.6, 0.1, 1.0) for _ in range(21)), 33)
+    assert len(moved) == 21 and 0.4 < moved[0].x < 0.5 and moved[0].visibility == 1.0
