@@ -1,59 +1,145 @@
 # Motion Tracker
 
-Desktop prototype: laptop webcam → MediaPipe Pose Landmarker → body landmarks → overlay drawn on the live video.
-Two circles follow the hands. Everything runs locally.
+Real-time body and hand tracking from a laptop webcam, drawn over the live video.
+Built on [MediaPipe Tasks](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) and OpenCV. Everything runs locally; no video leaves the machine.
 
-## Setup (Windows PowerShell)
+This is a desktop prototype for studying motion-tracking mechanics. The pure-logic layers are written to be ported to Android (Kotlin + CameraX) and iOS later.
+
+## Features
+
+- **Pose:** 33 body landmarks with a skeleton overlay, mirrored like a mirror.
+- **Hand circles:** one circle per hand, centered on the wrist or the palm. Left hand is blue, right is red. A lost hand holds its place for 200 ms, then disappears without jumping.
+- **Fingers:** 21 landmarks per hand (up to two hands). Left/right comes from the nearest pose wrist, so colors never swap when arms cross.
+- **Smoothing:** a [One Euro Filter](https://gery.casiez.net/1euro/) on every coordinate of the pose and the fingers. Steady at rest, no visible lag on fast moves.
+- **Metrics:** render FPS, tracking FPS and median latency, shown on screen and optionally logged to CSV.
+- **Video files:** the same pipeline over a recording, deterministic, for comparing settings on identical input.
+
+## Requirements
+
+- Python 3.11 or 3.12. MediaPipe does not support 3.13+ yet.
+- A webcam.
+- Tested on Windows 11. macOS and Linux should work but are untested.
+
+## Quick start
+
+Windows PowerShell:
 
 ```
 py -3.11 -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-python scripts/download_model.py          # full (default); also: lite, heavy
-python scripts/download_model.py hand     # finger tracking model
+python scripts/download_model.py          # pose model: full (default); also lite, heavy
+python scripts/download_model.py hand     # finger model
+python -m motion
 ```
 
-## Run
+macOS / Linux: `python3.11 -m venv .venv && source .venv/bin/activate`, the rest is the same.
+
+Models are downloaded into `models/` from Google's MediaPipe model storage and are not part of this repository.
+
+## Usage
 
 ```
-python -m motion [--model lite|full|heavy] [--log metrics.csv] [--input video.mp4] [--no-hands]
+python -m motion [--model lite|full|heavy] [--input video.mp4] [--log metrics.csv] [--no-hands]
 ```
 
-`--input` runs the same pipeline over a video file (MediaPipe VIDEO mode) at real-time speed and exits at the end.
-Results are deterministic, so two runs with different filter settings in `motion/config.py` see identical landmarks.
+| Option | Effect |
+|---|---|
+| `--model` | pose model size: `lite` is fastest, `heavy` most accurate |
+| `--input` | process a video file instead of the camera, at real-time speed; exits at the end |
+| `--log` | write metrics to a CSV file once per second |
+| `--no-hands` | skip the finger model entirely |
 
 | Key | Action |
 |---|---|
 | `s` | skeleton on/off |
-| `f` | smoothing filter on/off |
-| `h` | finger tracking on/off (stops the hand model too) |
+| `f` | smoothing on/off (to compare raw vs filtered) |
+| `h` | fingers on/off (also pauses the hand model) |
 | `q` / `Esc` | quit |
 
-Tunable parameters live in `motion/config.py`.
+## How it works
+
+```
+capture → tracker → smoothing → renderer
+```
+
+| Module | Role |
+|---|---|
+| `capture.py` | camera (DirectShow, 1280×720 MJPG on Windows) or video file; every frame gets a capture timestamp |
+| `tracker.py` | MediaPipe Pose and Hand Landmarkers in `LIVE_STREAM` mode (`VIDEO` for files); converts results into plain dataclasses |
+| `contract.py` | `Landmark`, `PoseFrame`, `HandsFrame`, landmark indices, skeleton connections. No MediaPipe or OpenCV imports |
+| `geometry.py` | mirroring, pixel conversion, hand centers, lost-hand hold, matching hands to pose wrists |
+| `smoothing.py` | One Euro Filter |
+| `metrics.py` | FPS and latency over a time window |
+| `renderer.py` | all OpenCV drawing and the window |
+| `config.py` | every tunable number |
+
+- Inference runs on the raw, unmirrored frame, so left and right stay anatomically correct. Only the displayed image and the coordinates are mirrored.
+- MediaPipe drops frames itself when it is busy. There is no frame queue.
+- Callbacks only convert and store results. All drawing happens in the main loop.
+- `contract`, `geometry`, `smoothing` and `metrics` are plain Python with no dependencies: this is the part meant to be ported to Kotlin.
+
+## Tuning
+
+All parameters live in `motion/config.py`. The smoothing filter has three:
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `ONE_EURO_MIN_CUTOFF` | 1.0 Hz | smoothing at rest; lower = steadier but slower to start moving |
+| `ONE_EURO_BETA` | 9.0 | how much the filter opens up with speed; higher = less lag on fast moves |
+| `ONE_EURO_D_CUTOFF` | 1.0 Hz | smoothing of the speed estimate itself; rarely changed |
+
+Tune with the hands still first (circles jitter → lower `MIN_CUTOFF`), then with fast waves (circles lag → raise `BETA`).
+The common default `beta = 0.007` assumes pixel coordinates. Here coordinates are 0..1, hence `0.007 × 1280 ≈ 9`.
+
+To compare settings on identical input, record a clip and replay it with `--input`: results are deterministic.
 
 ## Measurements
 
 Laptop: Intel Core i7-12650H, camera 1280×720 MJPG @ 30 fps, MediaPipe 1.0.1 (CPU), Windows 11.
 Medians over ~16 s of `--log` output, first 3 s dropped.
 
-| Model | Render FPS | Tracking FPS | Latency, ms (median) |
+| Pose model | Render FPS | Tracking FPS | Latency, ms |
 |---|---|---|---|
 | lite  | 30.5 | 30.5 | 31  |
 | full  | 30.5 | 28.0 | 31  |
 | heavy | 30.5 | 14.3 | 109 |
 
-Latency = time when the main loop first sees a result minus that frame's capture timestamp.
-The loop waits on the camera (~33 ms per frame), so latency below one frame period reads as ~31 ms.
+Pose `full` with and without the finger model. No hands were in view during this run, so the hand model ran palm detection on every frame:
 
-### Pose + hands (stage 6)
+| Models | Pose FPS | Pose latency, ms | Hands FPS | Hands latency, ms |
+|---|---|---|---|---|
+| pose only | 30.5 | 31 | — | — |
+| pose + hands | 30.5 | 31 | 30.5 | 31 |
 
-Same laptop, pose model `full`, medians over ~16 s.
-No hands were in view during this run, so the hand model ran palm detection on every frame.
+Latency is the time from frame capture until the main loop first sees its result.
+The loop waits on the camera (~33 ms per frame), so anything under one frame period shows as ~31 ms.
 
-| Models | Render FPS | Pose FPS | Pose latency, ms | Hands FPS | Hands latency, ms |
-|---|---|---|---|---|---|
-| pose only (`--no-hands`) | 30.5 | 30.5 | 31 | — | — |
-| pose + hands             | 30.5 | 30.5 | 31 | 30.5 | 31 |
+## Project layout
 
-Finger sides come from the nearest pose wrist, not from the hand model's handedness, so colors stay with the person's hands.
-Fingers are drawn only while a pose is detected.
+```
+motion/               the application (python -m motion)
+scripts/download_model.py
+tests/                pytest, pure logic only (no camera, no model)
+models/               downloaded .task files, git-ignored
+```
+
+## Tests
+
+```
+pytest
+```
+
+## Troubleshooting
+
+- **About 1 FPS and about 1000 ms latency on every model:** another application is using the camera. Close it and restart.
+- **`model not found`:** run the `download_model.py` command printed in the error message.
+
+## Roadmap
+
+- Android version: CameraX in place of `capture.py`, MediaPipe Tasks for Android in place of `tracker.py`, with the same data contract and the filter parameters tuned here.
+- iOS after that.
+
+## License
+
+[MIT](LICENSE). MediaPipe is licensed under Apache 2.0. The model files are downloaded separately and are subject to Google's terms for those models.
