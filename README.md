@@ -76,7 +76,7 @@ python -m game [--model lite|full|heavy] [--input video.mp4]
 ```
 
 - **Catch** (G1): balls fall from the top; catch blue ones with your left hand and red ones with your right. The whole hand catches, fingers included.
-  Five in a row raise the score multiplier; a missed ball costs a life. Raise both hands to start and to play again.
+  Five in a row raise the score multiplier; a missed ball costs a life. Hold a hand on START (or raise both arms) to play.
 
 More modes are planned (fruit slicing, punching targets, dodging, "copy the pose", a rhythm game): see the
 "Мини-игры" section in [CLAUDE.md](CLAUDE.md). Game logic is plain Python that only sees a `PlayerState`

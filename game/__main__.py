@@ -19,8 +19,10 @@ def main() -> int:
         from game import render
         from game.catch import CatchGame
         from game.player import Player
+        from game.ui import DwellButton
+        from game import config
         from motion import renderer
-        from motion.events import EventType
+        from motion.events import State
         from motion.pipeline import Pipeline, PipelineError
     except ModuleNotFoundError as e:
         print(f"error: missing dependency '{e.name}', run: python -m pip install mediapipe", file=sys.stderr)
@@ -35,6 +37,8 @@ def main() -> int:
 
     player = Player()
     game: CatchGame | None = None  # created on the first frame, when the frame size is known
+    start_button: DwellButton | None = None
+    last_now: float | None = None
     banner, banner_until = "", 0.0
     started = time.monotonic()
     try:
@@ -45,19 +49,27 @@ def main() -> int:
             frame = renderer.mirror(tick.frame)
             height, width = frame.shape[:2]
             game = game or CatchGame(width, height)
+            start_button = start_button or DwellButton(
+                (width / 2, height * config.START_BUTTON_Y), config.START_BUTTON_RADIUS, config.START_DWELL_S,
+            )
             now = tick.frame_ms / 1000  # camera or video timeline: the game runs on capture time
+            dt = 0.0 if last_now is None else now - last_now
+            last_now = now
 
             state = player.update(
                 tick.smoothed, tick.new_pose, tick.smooth_fingers, {e.type for e in tick.events},
                 pipeline.engine.states, width, height,
             )
-            if EventType.BOTH_ARMS_RAISED in state.events and game.can_start(now):
+            # Start: hold a hand on the START button, or have both arms up. The state, not the "raised" event:
+            # arms already up when the restart delay ends must count without lowering them first.
+            pressed = start_button.update(state.hand_bones, dt) if game.phase != "playing" else False
+            if (pressed or State.BOTH_ARMS_UP in state.states) and game.can_start(now):
                 game.start(now)
             for event in game.update(state.hand_bones, now):
                 if event in ("wrong_hand", "miss"):
                     banner, banner_until = event.replace("_", " ").upper(), time.monotonic() + 0.6
 
-            view = render.draw_catch(frame, game, state, now)
+            view = render.draw_catch(frame, game, state, now, start_button)
             if time.monotonic() < banner_until:
                 renderer.draw_banner(view, banner)
 

@@ -6,17 +6,7 @@ from dataclasses import dataclass
 
 from game import config
 
-Vec2 = tuple[float, float]
-Segment = tuple[Vec2, Vec2]
-
-
-def segment_distance(p: Vec2, seg: Segment) -> float:
-    """Distance from point p to the segment."""
-    (ax, ay), (bx, by) = seg
-    dx, dy = bx - ax, by - ay
-    length2 = dx * dx + dy * dy
-    t = 0.0 if length2 == 0 else max(0.0, min(1.0, ((p[0] - ax) * dx + (p[1] - ay) * dy) / length2))
-    return math.dist(p, (ax + t * dx, ay + t * dy))
+from game.shapes import Segment, bones_touch
 
 
 @dataclass
@@ -84,10 +74,7 @@ class CatchGame:
         for ball in list(self.balls):
             ball.vy += config.GRAVITY * dt
             ball.y += ball.vy * dt
-            touching = {
-                side for side, bones in hands.items()
-                if bones and min(segment_distance((ball.x, ball.y), seg) for seg in bones) < reach
-            }
+            touching = bones_touch((ball.x, ball.y), reach, hands)
             if ball.side in touching:
                 self.balls.remove(ball)
                 self.score += self.multiplier  # the multiplier earned by the streak so far

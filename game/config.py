@@ -17,4 +17,9 @@ LIVES: int = 3
 COMBO_STEP: int = 5              # score multiplier grows by 1 every this many catches in a row
 MAX_DT_S: float = 0.05           # longer frames are clamped (no jumps after a stall)
 RESTART_DELAY_S: float = 1.5     # after game over, ignore "hands up" this long (hands may still be up)
+
+# Menu: start/restart without a keyboard
+START_BUTTON_Y: float = 0.68     # button center, as a fraction of the frame height (easy to reach sitting down)
+START_BUTTON_RADIUS: int = 70
+START_DWELL_S: float = 1.0       # hold a hand on the button this long
 SEED: int | None = None          # fixed seed = same object sequence every game (handy for comparing)
