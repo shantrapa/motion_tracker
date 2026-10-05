@@ -13,6 +13,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="python -m motion")
     parser.add_argument("--model", choices=("lite", "full", "heavy"), default=config.MODEL_VARIANT)
     parser.add_argument("--log", type=Path, metavar="CSV", help="write metrics once per second")
+    parser.add_argument("--input", type=Path, metavar="VIDEO", help="process a video file instead of the camera")
     return parser.parse_args()
 
 
@@ -40,13 +41,17 @@ def main() -> int:
             config.POSE_DETECTION_CONFIDENCE,
             config.POSE_PRESENCE_CONFIDENCE,
             config.TRACKING_CONFIDENCE,
+            video=args.input is not None,
         )
     except tracker.TrackerError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
 
     try:
-        camera = capture.Camera(config.CAMERA_INDEX, config.FRAME_WIDTH, config.FRAME_HEIGHT)
+        if args.input:
+            source: capture.Camera | capture.VideoFile = capture.VideoFile(args.input)
+        else:
+            source = capture.Camera(config.CAMERA_INDEX, config.FRAME_WIDTH, config.FRAME_HEIGHT)
     except capture.CameraError as e:
         pose_tracker.close()
         print(f"error: {e}", file=sys.stderr)
@@ -66,20 +71,24 @@ def main() -> int:
     started = time.monotonic()
     try:
         while True:
-            frame = camera.read()
-            if frame is None:
+            captured = source.read()
+            if captured is None:
+                if args.input:
+                    return 0  # end of file
                 failures += 1
                 if failures >= config.MAX_READ_FAILURES:
                     print(f"error: camera returned no frames {failures} times in a row", file=sys.stderr)
                     return 1
                 continue
             failures = 0
-            pose_tracker.send(frame, int(time.monotonic() * 1000))
+            frame, frame_ms = captured
+            pose_tracker.send(frame, frame_ms)
 
             latest = pose_tracker.latest()
             is_new = latest is not None and (raw is None or latest.timestamp_ms != raw.timestamp_ms)
             if is_new:
-                metrics.on_result(time.monotonic() * 1000 - latest.timestamp_ms)
+                # File timestamps are on the video timeline, so wall-clock latency is meaningless there.
+                metrics.on_result(None if args.input else time.monotonic() * 1000 - latest.timestamp_ms)
                 # Filter state stays warm even when display is unfiltered, so toggling 'f' never jumps.
                 raw, smoothed = latest, smoother(latest)
             pose = smoothed if use_filter else raw
@@ -112,7 +121,10 @@ def main() -> int:
                 f"model {args.model} | filter {'on' if use_filter else 'off'} [f]",
             ])
 
-            key = renderer.show(view)
+            wait_ms = 1
+            if args.input:  # play no faster than real time; slower if inference can't keep up
+                wait_ms = max(1, round(frame_ms - (time.monotonic() - started) * 1000))
+            key = renderer.show(view, wait_ms)
             if key in config.QUIT_KEYS or not renderer.is_open():
                 return 0
             if key == config.SKELETON_KEY:
@@ -122,7 +134,7 @@ def main() -> int:
     except KeyboardInterrupt:
         return 0
     finally:
-        camera.close()
+        source.close()
         pose_tracker.close()
         renderer.close()
         if log_file:

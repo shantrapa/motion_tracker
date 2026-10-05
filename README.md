@@ -15,8 +15,11 @@ python scripts/download_model.py          # full (default); also: lite, heavy
 ## Run
 
 ```
-python -m motion [--model lite|full|heavy] [--log metrics.csv]
+python -m motion [--model lite|full|heavy] [--log metrics.csv] [--input video.mp4]
 ```
+
+`--input` runs the same pipeline over a video file (MediaPipe VIDEO mode) at real-time speed and exits at the end.
+Results are deterministic, so two runs with different filter settings in `motion/config.py` see identical landmarks.
 
 | Key | Action |
 |---|---|

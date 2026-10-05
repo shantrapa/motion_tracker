@@ -32,18 +32,22 @@ class Tracker:
         detection_confidence: float,
         presence_confidence: float,
         tracking_confidence: float,
+        video: bool = False,
     ) -> None:
+        """video=False: LIVE_STREAM, results arrive asynchronously via callback.
+        video=True: VIDEO mode, send() runs inference synchronously (for files)."""
         if not model_path.exists():
             raise TrackerError(f"model not found: {model_path}\nrun: python scripts/download_model.py")
         options = vision.PoseLandmarkerOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=str(model_path)),
-            running_mode=vision.RunningMode.LIVE_STREAM,
+            running_mode=vision.RunningMode.VIDEO if video else vision.RunningMode.LIVE_STREAM,
             num_poses=1,
             min_pose_detection_confidence=detection_confidence,
             min_pose_presence_confidence=presence_confidence,
             min_tracking_confidence=tracking_confidence,
-            result_callback=self._on_result,
+            result_callback=None if video else self._on_result,
         )
+        self._video = video
         self._lock = threading.Lock()
         self._latest: PoseFrame | None = None
         self._last_sent_ms = -1
@@ -64,7 +68,13 @@ class Tracker:
             return
         self._last_sent_ms = timestamp_ms
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        self._landmarker.detect_async(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), timestamp_ms)
+        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        if self._video:
+            pose = to_pose_frame(self._landmarker.detect_for_video(image, timestamp_ms).pose_landmarks, timestamp_ms)
+            with self._lock:
+                self._latest = pose
+        else:
+            self._landmarker.detect_async(image, timestamp_ms)
 
     def latest(self) -> PoseFrame | None:
         with self._lock:

@@ -1,7 +1,11 @@
 import sys
+import time
+from pathlib import Path
 
 import cv2
 import numpy as np
+
+Frame = tuple[np.ndarray, int]  # (BGR image, capture timestamp in ms)
 
 
 class CameraError(RuntimeError):
@@ -25,9 +29,35 @@ class Camera:
         if (self.width, self.height) != (width, height):
             print(f"camera: requested {width}x{height}, got {self.width}x{self.height}")
 
-    def read(self) -> np.ndarray | None:
+    def read(self) -> Frame | None:
         ok, frame = self._cap.read()
-        return frame if ok else None
+        return (frame, int(time.monotonic() * 1000)) if ok else None
+
+    def close(self) -> None:
+        self._cap.release()
+
+
+class VideoFile:
+    """Frames from a file; timestamps come from the video timeline, not the wall clock."""
+
+    def __init__(self, path: Path) -> None:
+        if not path.exists():
+            raise CameraError(f"video file not found: {path}")
+        self._cap = cv2.VideoCapture(str(path))
+        if not self._cap.isOpened():
+            self._cap.release()
+            raise CameraError(f"cannot open video file: {path}")
+        fps = self._cap.get(cv2.CAP_PROP_FPS)
+        self.fps = fps if 0 < fps <= 1000 else 30.0  # some containers report 0 or garbage
+        self._index = 0
+
+    def read(self) -> Frame | None:
+        ok, frame = self._cap.read()
+        if not ok:
+            return None
+        ts = round(self._index * 1000 / self.fps)
+        self._index += 1
+        return frame, ts
 
     def close(self) -> None:
         self._cap.release()

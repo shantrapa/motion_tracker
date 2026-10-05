@@ -33,9 +33,9 @@ def draw_overlay(frame: np.ndarray, lines: list[str]) -> None:
         cv2.putText(frame, line, (10, 30 + 30 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
 
-def show(frame: np.ndarray) -> int:
+def show(frame: np.ndarray, wait_ms: int = 1) -> int:
     cv2.imshow(config.WINDOW_NAME, frame)
-    return cv2.waitKey(1) & 0xFF
+    return cv2.waitKey(wait_ms) & 0xFF
 
 
 def is_open() -> bool:

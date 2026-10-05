@@ -14,10 +14,11 @@ class Metrics:
         self._results = 0
         self._latencies: list[float] = []
 
-    def on_result(self, latency_ms: float) -> None:
-        """A new tracking result appeared; latency = now - its capture timestamp."""
+    def on_result(self, latency_ms: float | None) -> None:
+        """A new tracking result appeared; latency = now - its capture timestamp (None if unknown)."""
         self._results += 1
-        self._latencies.append(latency_ms)
+        if latency_ms is not None:
+            self._latencies.append(latency_ms)
 
     def on_frame(self, now_s: float) -> bool:
         """A frame was rendered. Returns True when a window just closed and values were updated."""
