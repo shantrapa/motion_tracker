@@ -13,7 +13,7 @@ SKELETON_KEY: int = ord("s")
 FILTER_KEY: int = ord("f")
 
 # Metrics
-FPS_WINDOW_S: float = 1.0
+METRICS_WINDOW_S: float = 1.0  # fps and median latency are computed over this window
 
 # Pose model thresholds (kept separate on purpose, see CLAUDE.md)
 POSE_DETECTION_CONFIDENCE: float = 0.5

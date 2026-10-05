@@ -1,33 +1,23 @@
+import argparse
+import csv
 import sys
 import time
+from pathlib import Path
 
 from motion import config
 from motion.contract import PoseFrame
+from motion.metrics import Metrics
 
 
-class FpsCounter:
-    """Frames per second, averaged over a fixed time window."""
-
-    def __init__(self, window_s: float) -> None:
-        self.window_s = window_s
-        self.fps = 0.0
-        self._start: float | None = None
-        self._count = 0
-
-    def tick(self, now: float) -> float:
-        if self._start is None:
-            self._start = now
-            return self.fps
-        self._count += 1
-        elapsed = now - self._start
-        if elapsed >= self.window_s:
-            self.fps = self._count / elapsed
-            self._start = now
-            self._count = 0
-        return self.fps
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="python -m motion")
+    parser.add_argument("--model", choices=("lite", "full", "heavy"), default=config.MODEL_VARIANT)
+    parser.add_argument("--log", type=Path, metavar="CSV", help="write metrics once per second")
+    return parser.parse_args()
 
 
 def main() -> int:
+    args = parse_args()
     try:
         from motion import capture, geometry, renderer, smoothing, tracker
         from motion.contract import SKELETON
@@ -36,8 +26,17 @@ def main() -> int:
         return 1
 
     try:
+        log_file = args.log.open("w", newline="") if args.log else None
+    except OSError as e:
+        print(f"error: cannot open log file: {e}", file=sys.stderr)
+        return 1
+    log = csv.writer(log_file) if log_file else None
+    if log:
+        log.writerow(["t_s", "model", "render_fps", "tracking_fps", "latency_ms_median"])
+
+    try:
         pose_tracker = tracker.Tracker(
-            config.model_path(),
+            config.model_path(args.model),
             config.POSE_DETECTION_CONFIDENCE,
             config.POSE_PRESENCE_CONFIDENCE,
             config.TRACKING_CONFIDENCE,
@@ -53,7 +52,7 @@ def main() -> int:
         print(f"error: {e}", file=sys.stderr)
         return 1
 
-    fps = FpsCounter(config.FPS_WINDOW_S)
+    metrics = Metrics(config.METRICS_WINDOW_S)
     holds = {side: geometry.HeldPoint(config.LOST_HOLD_MS) for side in ("left", "right")}
     hands: dict[str, geometry.NormPoint | None] = {"left": None, "right": None}
     smoother = smoothing.PoseSmoother(
@@ -64,6 +63,7 @@ def main() -> int:
     show_skeleton = True
     use_filter = True
     failures = 0
+    started = time.monotonic()
     try:
         while True:
             frame = camera.read()
@@ -79,6 +79,7 @@ def main() -> int:
             latest = pose_tracker.latest()
             is_new = latest is not None and (raw is None or latest.timestamp_ms != raw.timestamp_ms)
             if is_new:
+                metrics.on_result(time.monotonic() * 1000 - latest.timestamp_ms)
                 # Filter state stays warm even when display is unfiltered, so toggling 'f' never jumps.
                 raw, smoothed = latest, smoother(latest)
             pose = smoothed if use_filter else raw
@@ -96,9 +97,20 @@ def main() -> int:
                 renderer.draw_skeleton(view, points, SKELETON)
             left, right = (geometry.to_display(h, width, height) if h else None for h in hands.values())
             renderer.draw_hands(view, left, right, config.HAND_CIRCLE_RADIUS)
-            renderer.draw_overlay(
-                view, [f"FPS {fps.tick(time.monotonic()):.1f}", f"filter {'on' if use_filter else 'off'} [f]"]
-            )
+
+            now = time.monotonic()
+            if metrics.on_frame(now) and log:
+                latency = f"{metrics.latency_ms:.1f}" if metrics.latency_ms is not None else ""
+                log.writerow([f"{now - started:.1f}", args.model,
+                              f"{metrics.render_fps:.1f}", f"{metrics.tracking_fps:.1f}", latency])
+                log_file.flush()
+            latency_text = f"{metrics.latency_ms:.0f} ms" if metrics.latency_ms is not None else "-"
+            renderer.draw_overlay(view, [
+                f"render {metrics.render_fps:.1f} fps",
+                f"tracking {metrics.tracking_fps:.1f} fps",
+                f"latency {latency_text}",
+                f"model {args.model} | filter {'on' if use_filter else 'off'} [f]",
+            ])
 
             key = renderer.show(view)
             if key in config.QUIT_KEYS or not renderer.is_open():
@@ -113,6 +125,8 @@ def main() -> int:
         camera.close()
         pose_tracker.close()
         renderer.close()
+        if log_file:
+            log_file.close()
 
 
 if __name__ == "__main__":
