@@ -34,10 +34,10 @@ android {
 
 // Models are not committed; fetch them into assets before every build (no-op when present).
 val modelsDir = layout.projectDirectory.dir("src/main/assets")
-val modelUrls = mapOf(
-    "pose_landmarker_full.task" to
-        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task",
-)
+val modelUrls = listOf("lite", "full", "heavy").associate { v ->
+    "pose_landmarker_$v.task" to
+        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_$v/float16/latest/pose_landmarker_$v.task"
+}
 val downloadModels by tasks.registering {
     outputs.files(modelUrls.keys.map { modelsDir.file(it) })
     doLast {

@@ -15,16 +15,26 @@ class TrackerError(message: String, cause: Throwable? = null) : RuntimeException
 /**
  * PoseLandmarker in LIVE_STREAM mode. The only file that imports MediaPipe.
  * [onPose] runs on a MediaPipe thread with the result and the size of the frame it was computed on.
+ * [onError] runs on a MediaPipe thread for inference failures (e.g. a GPU delegate that starts but cannot run).
  */
 class Tracker(
     context: Context,
     modelAsset: String,
     useGpu: Boolean,
     private val onPose: (pose: PoseFrame, imageWidth: Int, imageHeight: Int) -> Unit,
+    private val onError: (RuntimeException) -> Unit,
 ) {
     private val landmarker: PoseLandmarker
     val delegate: String
     private var lastSentMs = -1L
+    private var sent = 0
+    @Volatile private var results = 0
+
+    /**
+     * Frames went in but nothing ever came out. A GPU delegate can load fine and then fail every frame;
+     * MediaPipe only logs that (the error listener is not called), so this is the only signal.
+     */
+    val stalled: Boolean get() = results == 0 && sent >= Config.STALL_FRAMES
 
     init {
         if (modelAsset !in (context.assets.list("") ?: emptyArray())) {
@@ -44,8 +54,11 @@ class Tracker(
             .setMinPoseDetectionConfidence(Config.POSE_DETECTION_CONFIDENCE)
             .setMinPosePresenceConfidence(Config.POSE_PRESENCE_CONFIDENCE)
             .setMinTrackingConfidence(Config.TRACKING_CONFIDENCE)
-            .setResultListener { result, image -> onPose(toPoseFrame(result), image.width, image.height) }
-            .setErrorListener { e -> Log.e(TAG, "pose landmarker error", e) }
+            .setResultListener { result, image ->
+                results += 1
+                onPose(toPoseFrame(result), image.width, image.height)
+            }
+            .setErrorListener { e -> onError(e) }
             .build()
         return try {
             PoseLandmarker.createFromOptions(context, options)
@@ -59,10 +72,18 @@ class Tracker(
     fun send(frame: Bitmap, timestampMs: Long) {
         if (timestampMs <= lastSentMs) return
         lastSentMs = timestampMs
+        sent += 1
         landmarker.detectAsync(BitmapImageBuilder(frame).build(), timestampMs)
     }
 
-    fun close() = landmarker.close()
+    fun close() {
+        try {
+            landmarker.close()
+        } catch (e: RuntimeException) {
+            // A graph that already failed (e.g. broken GPU delegate) rethrows that failure on close.
+            Log.w(TAG, "pose landmarker close reported an earlier failure", e)
+        }
+    }
 
     private companion object {
         const val TAG = "motion"
