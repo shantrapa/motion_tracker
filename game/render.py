@@ -60,7 +60,7 @@ def draw_catch(
     if game.phase == "playing":
         _text(view, f"SCORE {game.score}", (20, 45), 1.2)
         if game.combo:
-            _text(view, f"COMBO {game.combo}  x{game.multiplier}", (20, 90), 0.9, (0, 255, 255))
+            _text(view, f"COMBO {game.combo}  x{game.multiplier}  speed {game.speed:.2f}", (20, 90), 0.9, (0, 255, 255))
         for i in range(game.lives):
             cv2.circle(view, (w - 40 - i * 45, 40), 15, WHITE, -1, cv2.LINE_AA)  # not red: red balls are the right hand
     elif game.phase == "ready":

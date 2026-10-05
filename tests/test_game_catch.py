@@ -126,3 +126,23 @@ def test_player_uses_the_hand_model_and_falls_back_to_the_pose() -> None:
     assert len(state.hand_bones["right"]) == 4                   # pose outline: wrist, index, pinky, thumb
     hidden = Player().update(pose(hidden=(LEFT_WRIST,)), True, {}, set(), set(), 1280, 720)
     assert len(hidden.hand_bones["left"]) == 1                   # only index-pinky left without the wrist
+
+
+def test_the_streak_speeds_the_balls_up_and_a_break_resets_it() -> None:
+    def fall(combo: int) -> float:
+        g = game()
+        g.combo = combo
+        g.balls.append(Ball(400, 0, config.START_SPEED, "left"))
+        run(g, 30, {})
+        return g.balls[0].y
+
+    assert fall(0) < fall(10) < fall(20)
+    g = game()
+    assert g.speed == 1.0
+    g.combo = 10
+    assert g.speed == 1 + 10 * config.COMBO_SPEEDUP
+    g.combo = 1000
+    assert g.speed == config.COMBO_SPEED_MAX     # capped
+    g.balls.append(Ball(400, 715, 400.0, "left"))
+    run(g, 5, {})                                  # missed: the streak breaks
+    assert g.speed == 1.0

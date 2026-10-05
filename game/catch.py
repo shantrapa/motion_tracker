@@ -38,6 +38,11 @@ class CatchGame:
     def multiplier(self) -> int:
         return 1 + self.combo // config.COMBO_STEP
 
+    @property
+    def speed(self) -> float:
+        """How many times faster than normal the balls fall: grows with the streak."""
+        return min(1 + config.COMBO_SPEEDUP * self.combo, config.COMBO_SPEED_MAX)
+
     def can_start(self, now_s: float) -> bool:
         return self.phase == "ready" or (self.phase == "over" and now_s - self.ended_at >= config.RESTART_DELAY_S)
 
@@ -71,9 +76,11 @@ class CatchGame:
 
         events: list[str] = []
         reach = config.OBJECT_RADIUS + config.FINGER_RADIUS
+        # The streak speeds up the balls' clock: gravity and speed scale together, so the fall stays natural.
+        ball_dt = dt * self.speed
         for ball in list(self.balls):
-            ball.vy += config.GRAVITY * dt
-            ball.y += ball.vy * dt
+            ball.vy += config.GRAVITY * ball_dt
+            ball.y += ball.vy * ball_dt
             touching = bones_touch((ball.x, ball.y), reach, hands)
             if ball.side in touching:
                 self.balls.remove(ball)

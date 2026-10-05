@@ -15,6 +15,8 @@ SPAWN_RAMP: float = 0.012        # seconds less per second played
 SPAWN_MARGIN: int = 90           # keep spawns this far from the side edges
 LIVES: int = 3
 COMBO_STEP: int = 5              # score multiplier grows by 1 every this many catches in a row
+COMBO_SPEEDUP: float = 0.05      # balls fall this much faster per catch in the streak (+5%)...
+COMBO_SPEED_MAX: float = 2.5     # ...up to this many times the base speed; a broken streak resets it
 MAX_DT_S: float = 0.05           # longer frames are clamped (no jumps after a stall)
 RESTART_DELAY_S: float = 1.5     # after game over, ignore "hands up" this long (hands may still be up)
 
