@@ -5,8 +5,6 @@ import time
 from pathlib import Path
 
 from motion import config
-from motion.contract import HandsFrame, PoseFrame
-from motion.metrics import Metrics
 
 
 def parse_args() -> argparse.Namespace:
@@ -26,9 +24,10 @@ def fmt(value: float | None, spec: str, missing: str) -> str:
 def main() -> int:
     args = parse_args()
     try:
-        from motion import capture, event_engine, geometry, renderer, scene, smoothing, tracker
-        from motion.events import EventType, GestureEvent
-        from motion.contract import HAND_FINGERTIPS, HAND_SKELETON, NUM_HAND_LANDMARKS, SKELETON
+        from motion import geometry, renderer, scene
+        from motion.contract import HAND_FINGERTIPS, HAND_SKELETON, SKELETON
+        from motion.events import EventType
+        from motion.pipeline import Pipeline, PipelineError
     except ModuleNotFoundError as e:
         print(f"error: missing dependency '{e.name}', run: python -m pip install mediapipe", file=sys.stderr)
         return 1
@@ -44,97 +43,27 @@ def main() -> int:
                       "hand_tracking_fps", "hand_latency_ms_median"])
 
     try:
-        pose_tracker = tracker.Tracker(
-            config.model_path(args.model),
-            None if args.no_hands else config.HAND_MODEL_PATH,
-            video=args.input is not None,
-        )
-    except tracker.TrackerError as e:
+        pipeline = Pipeline(args.model, hands=not args.no_hands, video=args.input)
+    except PipelineError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
+    engine, metrics, hand_metrics = pipeline.engine, pipeline.metrics, pipeline.hand_metrics
 
-    try:
-        if args.input:
-            source: capture.Camera | capture.VideoFile = capture.VideoFile(args.input)
-        else:
-            source = capture.Camera(config.CAMERA_INDEX, config.FRAME_WIDTH, config.FRAME_HEIGHT)
-    except capture.CameraError as e:
-        pose_tracker.close()
-        print(f"error: {e}", file=sys.stderr)
-        return 1
-
-    metrics = Metrics(config.METRICS_WINDOW_S)
-    hand_metrics = Metrics(config.METRICS_WINDOW_S)
     holds = {side: geometry.HeldPoint(config.LOST_HOLD_MS) for side in ("left", "right")}
     circles: dict[str, geometry.NormPoint | None] = {"left": None, "right": None}
-    smoother = smoothing.PoseSmoother(
-        config.ONE_EURO_MIN_CUTOFF, config.ONE_EURO_BETA, config.ONE_EURO_D_CUTOFF, config.FILTER_RESET_MS
-    )
-    raw: PoseFrame | None = None
-    smoothed: PoseFrame | None = None
-    last_hands: HandsFrame | None = None
-    # Finger filters are keyed by side, not by detection order, which changes between results.
-    finger_smoothers = {
-        side: smoothing.LandmarksSmoother(
-            NUM_HAND_LANDMARKS, config.ONE_EURO_MIN_CUTOFF, config.ONE_EURO_BETA,
-            config.ONE_EURO_D_CUTOFF, config.FILTER_RESET_MS,
-        )
-        for side in ("left", "right")
-    }
-    raw_fingers: dict[str, geometry.Hand | None] = {"left": None, "right": None}
-    smooth_fingers: dict[str, geometry.Hand | None] = {"left": None, "right": None}
     show_skeleton = True
     use_filter = True
     world: scene.Scene | None = None  # created on the first frame, when the frame size is known
     show_scene = args.scene
-    engine = event_engine.GestureEngine()
     banner, banner_until = "", 0.0
-    failures = 0
     started = time.monotonic()
-
-    def latency(ts_ms: int) -> float | None:
-        # File timestamps are on the video timeline, so wall-clock latency is meaningless there.
-        return None if args.input else time.monotonic() * 1000 - ts_ms
 
     try:
         while True:
-            captured = source.read()
-            if captured is None:
-                if args.input:
-                    return 0  # end of file
-                failures += 1
-                if failures >= config.MAX_READ_FAILURES:
-                    print(f"error: camera returned no frames {failures} times in a row", file=sys.stderr)
-                    return 1
-                continue
-            failures = 0
-            frame, frame_ms = captured
-            pose_tracker.send(frame, frame_ms)
-            aspect = frame.shape[1] / frame.shape[0]
-            events: list[GestureEvent] = []
-
-            latest_hands = pose_tracker.latest_hands()
-            if latest_hands is not None and latest_hands is not last_hands:
-                last_hands = latest_hands
-                hand_metrics.on_result(latency(latest_hands.timestamp_ms))
-                # Match on raw pose: same (unfiltered) timeline as the hand results.
-                raw_fingers = geometry.assign_hands(raw, latest_hands, config.MAX_SYNC_DELTA_MS)
-                smooth_fingers = {
-                    side: finger_smoothers[side](hand, latest_hands.timestamp_ms) if hand else None
-                    for side, hand in raw_fingers.items()
-                }
-                events += engine.update_hands(smooth_fingers, latest_hands.timestamp_ms, aspect)
-            if not pose_tracker.hands_enabled:
-                events += engine.update_hands({}, frame_ms, aspect)  # 'h' off mid-pinch: cancel, not hold forever
-
-            latest = pose_tracker.latest_pose()
-            is_new = latest is not None and (raw is None or latest.timestamp_ms != raw.timestamp_ms)
-            if is_new:
-                metrics.on_result(latency(latest.timestamp_ms))
-                # Filter state stays warm even when display is unfiltered, so toggling 'f' never jumps.
-                raw, smoothed = latest, smoother(latest)
-                # Always on the smoothed pose (independent of the 'f' toggle): fewer false triggers.
-                events += engine.update_pose(smoothed, aspect)
+            tick = pipeline.next()
+            if tick is None:
+                return 0  # end of file
+            frame, frame_ms, events = tick.frame, tick.frame_ms, tick.events
             # Pinch and grab have their own dot on the hand.
             shown = [e.type.name.replace("_", " ") for e in events if "PINCH" not in e.type.name and "GRAB" not in e.type.name]
             if shown:
@@ -144,8 +73,9 @@ def main() -> int:
                 side for side in ("left", "right")
                 if {EventType[f"{side.upper()}_PINCH_CANCELLED"], EventType[f"{side.upper()}_GRAB_CANCELLED"]} & kinds
             )
-            pose = smoothed if use_filter else raw
-            if is_new:
+            # Filter state stays warm even when display is unfiltered, so toggling 'f' never jumps.
+            pose = tick.smoothed if use_filter else tick.raw
+            if tick.new_pose:
                 for side, hold in holds.items():
                     center = geometry.hand_center(
                         pose, side, config.HAND_CENTER, config.LANDMARK_VISIBILITY_THRESHOLD
@@ -160,8 +90,8 @@ def main() -> int:
                 )
                 renderer.draw_skeleton(view, points, SKELETON)
             fingers = {
-                side: geometry.display_points(hand, width, height, 0.0) if hand and pose_tracker.hands_enabled else None
-                for side, hand in (smooth_fingers if use_filter else raw_fingers).items()
+                side: geometry.display_points(hand, width, height, 0.0) if hand and pipeline.hands_enabled else None
+                for side, hand in (tick.smooth_fingers if use_filter else tick.raw_fingers).items()
             }
             grips = {
                 side: geometry.to_display(p, width, height) if (p := engine.grip_point(side)) else None
@@ -198,17 +128,16 @@ def main() -> int:
             renderer.draw_hands(view, left, right, config.HAND_CIRCLE_RADIUS)
 
             now = time.monotonic()
-            hand_metrics.on_frame(now)
-            if metrics.on_frame(now) and log:
+            if tick.metrics_updated and log:
                 log.writerow([
-                    f"{now - started:.1f}", args.model, int(pose_tracker.hands_enabled),
+                    f"{now - started:.1f}", args.model, int(pipeline.hands_enabled),
                     f"{metrics.render_fps:.1f}", f"{metrics.tracking_fps:.1f}", fmt(metrics.latency_ms, ".1f", ""),
                     f"{hand_metrics.tracking_fps:.1f}", fmt(hand_metrics.latency_ms, ".1f", ""),
                 ])
                 log_file.flush()
             hands_text = (
                 f"{hand_metrics.tracking_fps:.1f} fps, {fmt(hand_metrics.latency_ms, '.0f', '-')} ms"
-                if pose_tracker.hands_enabled else "off"
+                if pipeline.hands_enabled else "off"
             )
             states = sorted(s.name for s in engine.states if not s.name.endswith("VISIBLE")) or ["-"]
             renderer.draw_overlay(view, [
@@ -237,12 +166,14 @@ def main() -> int:
                 if world is not None:
                     world.reset_ball()
             if key == config.HANDS_KEY and not args.no_hands:
-                pose_tracker.hands_enabled = not pose_tracker.hands_enabled
+                pipeline.hands_enabled = not pipeline.hands_enabled
+    except PipelineError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
     except KeyboardInterrupt:
         return 0
     finally:
-        source.close()
-        pose_tracker.close()
+        pipeline.close()
         renderer.close()
         if log_file:
             log_file.close()
