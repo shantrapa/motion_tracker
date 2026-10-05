@@ -28,14 +28,27 @@ class FpsCounter:
 
 def main() -> int:
     try:
-        from motion import capture, renderer
+        from motion import capture, geometry, renderer, tracker
+        from motion.contract import SKELETON
     except ModuleNotFoundError as e:
         print(f"error: missing dependency '{e.name}', run: python -m pip install mediapipe", file=sys.stderr)
         return 1
 
     try:
+        pose_tracker = tracker.Tracker(
+            config.model_path(),
+            config.POSE_DETECTION_CONFIDENCE,
+            config.POSE_PRESENCE_CONFIDENCE,
+            config.TRACKING_CONFIDENCE,
+        )
+    except tracker.TrackerError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+    try:
         camera = capture.Camera(config.CAMERA_INDEX, config.FRAME_WIDTH, config.FRAME_HEIGHT)
     except capture.CameraError as e:
+        pose_tracker.close()
         print(f"error: {e}", file=sys.stderr)
         return 1
 
@@ -51,8 +64,14 @@ def main() -> int:
                     return 1
                 continue
             failures = 0
+            pose_tracker.send(frame, int(time.monotonic() * 1000))
 
             view = renderer.mirror(frame)
+            pose = pose_tracker.latest()
+            if pose is not None:
+                height, width = view.shape[:2]
+                points = geometry.display_points(pose, width, height, config.LANDMARK_VISIBILITY_THRESHOLD)
+                renderer.draw_skeleton(view, points, SKELETON)
             renderer.draw_fps(view, fps.tick(time.monotonic()))
             key = renderer.show(view)
             if key in config.QUIT_KEYS or not renderer.is_open():
@@ -61,6 +80,7 @@ def main() -> int:
         return 0
     finally:
         camera.close()
+        pose_tracker.close()
         renderer.close()
 
 

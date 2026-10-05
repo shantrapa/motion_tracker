@@ -2,10 +2,20 @@ import cv2
 import numpy as np
 
 from motion import config
+from motion.geometry import Point
 
 
 def mirror(frame: np.ndarray) -> np.ndarray:
     return cv2.flip(frame, 1)
+
+
+def draw_skeleton(frame: np.ndarray, points: list[Point | None], connections: tuple[tuple[int, int], ...]) -> None:
+    for a, b in connections:
+        if a < len(points) and b < len(points) and points[a] and points[b]:
+            cv2.line(frame, points[a], points[b], (255, 255, 255), 2, cv2.LINE_AA)
+    for p in points:
+        if p:
+            cv2.circle(frame, p, 4, (0, 200, 255), -1, cv2.LINE_AA)
 
 
 def draw_fps(frame: np.ndarray, fps: float) -> None:

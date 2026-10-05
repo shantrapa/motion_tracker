@@ -13,6 +13,12 @@ QUIT_KEYS: tuple[int, ...] = (ord("q"), 27)  # q, Esc
 # Metrics
 FPS_WINDOW_S: float = 1.0
 
+# Pose model thresholds (kept separate on purpose, see CLAUDE.md)
+POSE_DETECTION_CONFIDENCE: float = 0.5
+POSE_PRESENCE_CONFIDENCE: float = 0.5
+TRACKING_CONFIDENCE: float = 0.5
+LANDMARK_VISIBILITY_THRESHOLD: float = 0.5
+
 # Model
 MODEL_VARIANT: str = "full"  # lite | full | heavy
 MODELS_DIR: Path = Path(__file__).resolve().parent.parent / "models"
