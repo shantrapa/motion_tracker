@@ -15,9 +15,11 @@ from motion.contract import (
 from motion.events import STATE_ENTERED, STATE_EXITED, EventType, GestureEvent, State
 from motion.geometry import Hand, NormPoint, iso
 from motion.gesture_detector import (
-    ClapDetector, PunchDetector, PushPullDetector, SwipeDetector, WaveDetector, recent_speed,
+    CircleDetector, ClapDetector, PunchDetector, PushPullDetector, SwipeDetector, WaveDetector, recent_speed,
 )
-from motion.hand_state import Grab, Pinch, hand_shape, palm_size
+from motion.hand_state import (
+    Grab, Pinch, finger_count, finger_states, hand_shape, palm_size, point_direction, two_hand_shape,
+)
 from motion.motion_history import MotionHistory
 
 SIDES = ("left", "right")
@@ -81,6 +83,7 @@ class GestureEngine:
         self._punch = {side: PunchDetector() for side in SIDES}
         self._swipe = {side: SwipeDetector() for side in SIDES}
         self._wave = {side: WaveDetector() for side in SIDES}
+        self._circle = {side: CircleDetector() for side in SIDES}
         self._wrist_path = {side: MotionHistory(config.MOTION_HISTORY_MS) for side in SIDES}
         self._pinch = {side: Pinch(config.PINCH_ON, config.PINCH_OFF) for side in SIDES}
         self._grab = {side: Grab(config.GRAB_ON_FOLDED, config.GRAB_OFF_FOLDED) for side in SIDES}
@@ -93,6 +96,8 @@ class GestureEngine:
             cooldowns[EventType[f"{side}_PUSH"]] = config.PUSH_COOLDOWN_MS
             cooldowns[EventType[f"{side}_PULL"]] = config.PUSH_COOLDOWN_MS
             cooldowns[EventType[f"{side}_THROW"]] = config.THROW_COOLDOWN_MS
+            for turn in ("CLOCKWISE", "COUNTERCLOCKWISE"):
+                cooldowns[EventType[f"{side}_HAND_CIRCLE_{turn}"]] = config.CIRCLE_COOLDOWN_MS
             for direction in ("LEFT", "RIGHT", "UP", "DOWN"):
                 cooldowns[EventType[f"{side}_SWIPE_{direction}"]] = config.SWIPE_COOLDOWN_MS
         self._cooldown = Cooldown(cooldowns)
@@ -185,6 +190,9 @@ class GestureEngine:
             raised = elbow.visibility >= min_vis and wrist.y < elbow.y
             if self._wave[side].update(path, unit, raised, now):
                 self._emit(events, EventType[f"{prefix}_WAVE"], now, conf)
+            turn = self._circle[side].update(path, unit, now)
+            if turn is not None:
+                self._emit(events, EventType[f"{prefix}_HAND_CIRCLE_{turn}"], now, conf)
 
         lw, rw = lm[LEFT_WRIST], lm[RIGHT_WRIST]
         if min(lw.visibility, rw.visibility) < min_vis:
@@ -200,21 +208,31 @@ class GestureEngine:
         events: list[GestureEvent] = []
         present: dict[State, float] = {}
         shapes: dict[str, str | None] = {}
+        fists: dict[str, bool] = {}
         for side in SIDES:
-            hand = hands.get(side)
+            hand, prefix = hands.get(side), side.upper()
             if hand is None:
                 continue
-            present[State[f"{side.upper()}_HAND_VISIBLE"]] = 1.0
+            present[State[f"{prefix}_HAND_VISIBLE"]] = 1.0
+            present[State[f"{prefix}_FINGERS_{finger_count(hand, aspect)}"]] = 1.0
+            fists[side] = not any(finger_states(hand, aspect).values())
             shapes[side] = hand_shape(hand, aspect)
             if shapes[side] is not None:
-                present[State[f"{side.upper()}_{shapes[side]}"]] = 1.0
+                present[State[f"{prefix}_{shapes[side]}"]] = 1.0
+            if shapes[side] in ("POINT", "FINGER_GUN") and (direction := point_direction(hand, aspect)):
+                present[State[f"{prefix}_{direction}"]] = 1.0
+        if shapes.get("left") is not None and shapes.get("left") == shapes.get("right"):
+            present[State[f"BOTH_HANDS_{shapes['left']}"]] = 1.0
+        left, right = hands.get("left"), hands.get("right")
+        if left is not None and right is not None and (both := two_hand_shape(left, right, aspect)):
+            present[State[both]] = 1.0
         self._transitions(events, self._hands, present, now)
 
         for side in SIDES:
             hand, prefix = hands.get(side), side.upper()
             for kind, lifecycle in (("PINCH", self._pinch[side]), ("GRAB", self._grab[side])):
                 if kind == "PINCH":
-                    change = lifecycle.update(hand, aspect, fist=shapes.get(side) == "FIST")
+                    change = lifecycle.update(hand, aspect, fist=fists.get(side, False))
                 else:
                     change = lifecycle.update(hand, aspect)
                 if change is None:

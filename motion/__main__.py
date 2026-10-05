@@ -210,12 +210,14 @@ def main() -> int:
                 f"{hand_metrics.tracking_fps:.1f} fps, {fmt(hand_metrics.latency_ms, '.0f', '-')} ms"
                 if pose_tracker.hands_enabled else "off"
             )
+            states = sorted(s.name for s in engine.states if not s.name.endswith("VISIBLE")) or ["-"]
             renderer.draw_overlay(view, [
                 f"render {metrics.render_fps:.1f} fps",
                 f"pose {metrics.tracking_fps:.1f} fps, {fmt(metrics.latency_ms, '.0f', '-')} ms",
                 f"hands {hands_text} [h]",
                 f"model {args.model} | filter {'on' if use_filter else 'off'} [f] | scene {'on' if show_scene else 'off'} [g]",
-                f"states: {', '.join(sorted(s.name for s in engine.states if not s.name.endswith('VISIBLE'))) or '-'}",
+                # A few names per line: hand shapes, directions and finger counts add up fast.
+                *(("states: " if i == 0 else "        ") + ", ".join(states[i:i + 4]) for i in range(0, len(states), 4)),
             ])
             if now < banner_until:
                 renderer.draw_banner(view, banner)

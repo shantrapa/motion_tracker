@@ -18,7 +18,15 @@ E = EventType
 
 # --- hand shapes -------------------------------------------------------------------------------
 
-def make_hand(extended: set[str]) -> tuple[Landmark, ...]:
+THUMBS = {
+    # thumb CMC, MCP, IP, tip. Palm size is 0.2 (wrist (0.5, 0.8) -> middle base (0.5, 0.6)).
+    "tucked": [(0.48, 0.76), (0.46, 0.72), (0.49, 0.69), (0.52, 0.68)],  # across the palm
+    "up": [(0.47, 0.75), (0.44, 0.65), (0.4, 0.55), (0.36, 0.45)],
+    "side": [(0.47, 0.76), (0.42, 0.72), (0.36, 0.71), (0.3, 0.7)],     # sticking out sideways
+}
+
+
+def make_hand(extended: set[str], thumb: str = "tucked") -> tuple[Landmark, ...]:
     """Upright hand, wrist at (0.5, 0.8), raw normalized coords. Folded fingers curl the tip back to the palm."""
     pts = [Landmark(0.5, 0.8, 0.0, 1.0)] * NUM_HAND_LANDMARKS
     columns = {"index": (0.45, 5, 6, 8), "middle": (0.5, 9, 10, 12), "ring": (0.55, 13, 14, 16), "pinky": (0.6, 17, 18, 20)}
@@ -26,6 +34,8 @@ def make_hand(extended: set[str]) -> tuple[Landmark, ...]:
         pts[mcp] = Landmark(x, 0.6, 0.0, 1.0)
         pts[pip] = Landmark(x, 0.5, 0.0, 1.0)
         pts[tip] = Landmark(x, 0.35 if name in extended else 0.62, 0.0, 1.0)
+    for i, (x, y) in enumerate(THUMBS[thumb], start=1):
+        pts[i] = Landmark(x, y, 0.0, 1.0)
     return tuple(pts)
 
 
@@ -43,7 +53,7 @@ def test_hand_shapes() -> None:
     assert hand_shape(make_hand(set()), 1.0) == "FIST"
     assert hand_shape(make_hand({"index"}), 1.0) == "POINT"
     assert hand_shape(make_hand({"index", "middle"}), 1.0) == "PEACE"
-    assert hand_shape(make_hand({"index", "pinky"}), 1.0) is None  # rock sign: not supported
+    assert hand_shape(make_hand({"ring"}), 1.0) is None  # ring finger alone: not a gesture
 
 
 def test_ok_sign() -> None:
@@ -65,8 +75,10 @@ def test_shape_does_not_depend_on_hand_rotation() -> None:
 
 
 def hands_events(frames: list[dict], start_ms: int = 0) -> list[EventType]:
+    """Hand events except finger counts (those change along with every shape)."""
     engine = GestureEngine()
-    return [e.type for i, h in enumerate(frames) for e in engine.update_hands(h, start_ms + i * 33, 1.0)]
+    kinds = [e.type for i, h in enumerate(frames) for e in engine.update_hands(h, start_ms + i * 33, 1.0)]
+    return [k for k in kinds if "_FINGERS_" not in k.name]
 
 
 def test_hand_detected_shape_and_lost() -> None:

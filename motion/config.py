@@ -88,6 +88,19 @@ CLAP_TOUCH: float = 0.5          # ...and closer than this fire it
 CLAP_SPEED: float = 2.0          # closing speed at the touch, shoulder widths/s
 CLAP_COOLDOWN_MS: int = 300
 
+# Hand shapes (common gesture list). Lengths in palm sizes (wrist -> middle finger base).
+THUMB_EXT_RATIO: float = 0.7     # thumb tip this far from the index base = thumb out
+THUMB_VERTICAL: float = 1.5      # thumb up/down: vertical part this many times the horizontal one
+POINT_MIN_LEN: float = 0.5       # index base -> tip at least this long to have a pointing direction
+VULCAN_GAP: float = 1.8          # middle-ring tip gap this many times the other gaps = Vulcan salute
+PINCHED_RADIUS: float = 0.35     # all five tips within this of their center = pinched fingers
+PINCHED_REACH: float = 1.3       # ...held out away from the palm (a fist bunches tips too, but close in)
+HEART_REACH: float = 1.2         # finger heart: the crossed thumb/index tips held out this far from the wrist
+TWO_HAND_TOUCH: float = 0.5      # two-hand shapes: matching tips this close, in palm sizes
+CIRCLE_MIN_RADIUS: float = 0.3   # hand circle at least this wide, in shoulder widths
+CIRCLE_TURN: float = 0.9         # ...and at least this many full turns
+CIRCLE_COOLDOWN_MS: int = 1000
+
 # Stage 10: hand and arm gestures (spec §63)
 GRAB_ON_FOLDED: int = 4          # fingers folded (of 4) to start a grab...
 GRAB_OFF_FOLDED: int = 2         # ...and at most this many to release it (hysteresis)

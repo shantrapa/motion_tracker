@@ -165,3 +165,33 @@ class ClapDetector:
             self._armed = False
             return True
         return False
+
+
+class CircleDetector:
+    """The wrist going round (spec §25): its path winds at least CIRCLE_TURN full turns around its own center
+    within the history window, at least CIRCLE_MIN_RADIUS wide. Returns "CLOCKWISE" / "COUNTERCLOCKWISE"
+    as the person sees it on the mirrored screen, or None."""
+
+    def __init__(self) -> None:
+        self._after_ms = -1
+
+    def update(self, history: MotionHistory, unit: float, now_ms: int) -> str | None:
+        pts = [p for _, p in history.since(self._after_ms + 1)]
+        if len(pts) < 8:
+            return None
+        cx, cy = sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)
+        radii = [math.dist(p, (cx, cy)) for p in pts]
+        mean_r = sum(radii) / len(radii)
+        if mean_r < config.CIRCLE_MIN_RADIUS * unit or min(radii) < 0.4 * mean_r:
+            return None  # too small, or the path goes through its center (a line, not a loop)
+        turned = 0.0
+        prev = math.atan2(pts[0][1] - cy, pts[0][0] - cx)
+        for x, y in pts[1:]:
+            a = math.atan2(y - cy, x - cx)
+            turned += (a - prev + math.pi) % (2 * math.pi) - math.pi  # wrapped step
+            prev = a
+        if abs(turned) < config.CIRCLE_TURN * 2 * math.pi:
+            return None
+        self._after_ms = now_ms
+        # Raw frame, y down: a positive angle sum looks clockwise; the mirrored screen flips it.
+        return "COUNTERCLOCKWISE" if turned > 0 else "CLOCKWISE"
