@@ -13,6 +13,7 @@ This is a desktop prototype for studying motion-tracking mechanics. The pure-log
 - **Smoothing:** a [One Euro Filter](https://gery.casiez.net/1euro/) on every coordinate of the pose and the fingers. Steady at rest, no visible lag on fast moves.
 - **Metrics:** render FPS, tracking FPS and median latency, shown on screen and optionally logged to CSV.
 - **Video files:** the same pipeline over a recording, deterministic, for comparing settings on identical input.
+- **Meme poses:** act out a meme (shush, Roll Safe, Gendo Ikari, Iron Man snap, Drake, Leo pointing, shrug, absolute cinema, ...) and its picture appears in the top-right corner (`m` toggles). Put the pictures in `memes/` (see `MEMES` in `motion/config.py`); they are not part of the repository.
 - **Scene:** hand circles and fingertips push a ball around; pinch it (thumb + index) or close your fist on it to pick it up, open the hand to throw it; holding a raised hand on the button resets it.
 - **Gestures and actions** (per [docs/MOTION_GESTURES_SPEC.md](docs/MOTION_GESTURES_SPEC.md)), shown on screen as they happen:
   - body: person detected/lost, each arm raised/lowered, both arms up, T-pose, lean left/right, squat + squat reps, jump + land;

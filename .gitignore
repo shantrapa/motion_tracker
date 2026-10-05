@@ -3,3 +3,5 @@ models/
 __pycache__/
 .pytest_cache/
 *.csv
+# Meme pictures are other people's images: kept local, not published (the app skips missing ones)
+memes/

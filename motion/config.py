@@ -112,6 +112,41 @@ THROW_WINDOW_MS: int = 150       # hand speed at release is measured over this t
 THROW_SPEED: float = 3.0         # shoulder widths/s at the moment the hand opens
 THROW_COOLDOWN_MS: int = 500
 
+# Meme poses: which meme picture to show for the pose acted out. Lengths in shoulder widths.
+MEMES_DIR: Path = Path(__file__).resolve().parent.parent / "memes"
+MEMES: dict[str, str] = {        # pose id -> picture in MEMES_DIR (missing files are skipped with a warning)
+    "SHUSH": "cat_shush.gif",
+    "MONKEY_THINKING": "monkey_finger.jpg",
+    "ROLL_SAFE": "roll_safe.jpg",
+    "GENDO_IKARI": "gendo_ikari.jpg",
+    "IRON_MAN": "i_am_ironman.jpeg",
+    "DRAKE": "drake.jpg",
+    "LEO_POINTING": "leo_dicaprio.jpg",
+    "SHRUG": "shrug.jpg",
+    "ABSOLUTE_CINEMA": "absolute_cinema.jpg",
+}
+MEME_KEY: int = ord("m")
+MEME_HOLD_MS: int = 400          # a pose must hold this long before its meme shows (no flicker)
+MEME_RELEASE_MS: int = 700       # the meme stays this long after the pose stops matching
+MEME_BOX: tuple[int, int] = (320, 240)  # max picture size, px; the aspect ratio is kept
+MEME_MARGIN: int = 20            # distance from the top-right corner, px
+MEME_SHOULDERS_PER_EARS: float = 2.0  # shoulder width ~ 2x ear-to-ear, when the shoulders are out of view
+MEME_MOUTH_DIST: float = 0.25    # fingertip this close to the mouth center = at the lips
+MEME_TEMPLE_DIST: float = 0.3    # fingertip this close to a temple (between outer eye and ear)
+MEME_GENDO_HANDS: float = 0.7    # both hands' centers this close together...
+MEME_GENDO_MOUTH: float = 0.6    # ...and their midpoint this close to the mouth
+MEME_SNAP_TOUCH: float = 0.35    # thumb and middle fingertip this close (in palm sizes) = ready to snap
+MEME_SNAP_REACH: float = 1.2     # ...held this far out from the wrist (a fist bunches them close in)
+MEME_DRAKE_DIST: float = 0.7     # open palm center this close to the nose
+MEME_POINT_AWAY: float = 0.8     # pointing fingertip at least this far from the nose (not at the face)
+MEME_POINT_HEIGHT: float = 0.8   # pointing wrist within this of shoulder height
+MEME_SHRUG_OUT: float = 0.15     # shrug: wrists at least this far outside the shoulders...
+MEME_SHRUG_LOW: float = 0.4      # ...hanging between this...
+MEME_SHRUG_HIGH: float = 1.6     # ...and this far below them...
+MEME_SHRUG_ELBOW_DEG: float = 140.0  # ...with both elbows bent below this angle
+MEME_CINEMA_OUT: float = 0.3     # absolute cinema: wrists this far outside the shoulders...
+MEME_CINEMA_HIGH: float = 0.3    # ...and no lower than this below shoulder height
+
 # Smoothing (One Euro Filter on normalized coords)
 # Tune by eye: jitter at rest -> lower MIN_CUTOFF; lag on fast moves -> raise BETA.
 ONE_EURO_MIN_CUTOFF: float = 1.0  # Hz

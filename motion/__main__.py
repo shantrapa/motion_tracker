@@ -25,6 +25,7 @@ def main() -> int:
     args = parse_args()
     try:
         from motion import geometry, renderer, scene
+        from motion.meme_poses import MemeController, detect_meme_pose
         from motion.contract import HAND_FINGERTIPS, HAND_SKELETON, SKELETON
         from motion.events import EventType
         from motion.pipeline import Pipeline, PipelineError
@@ -56,6 +57,9 @@ def main() -> int:
     world: scene.Scene | None = None  # created on the first frame, when the frame size is known
     show_scene = args.scene
     banner, banner_until = "", 0.0
+    memes = MemeController(config.MEME_HOLD_MS, config.MEME_RELEASE_MS)
+    meme_images = renderer.load_memes(config.MEMES_DIR, config.MEMES)
+    show_memes = True
     started = time.monotonic()
 
     try:
@@ -73,6 +77,9 @@ def main() -> int:
                 side for side in ("left", "right")
                 if {EventType[f"{side.upper()}_PINCH_CANCELLED"], EventType[f"{side.upper()}_GRAB_CANCELLED"]} & kinds
             )
+            # Recognition sees the smoothed pose and hands regardless of what is displayed.
+            fingers_seen = tick.smooth_fingers if pipeline.hands_enabled else {}
+            meme = memes.update(detect_meme_pose(tick.smoothed, fingers_seen, frame.shape[1] / frame.shape[0]), frame_ms)
             # Filter state stays warm even when display is unfiltered, so toggling 'f' never jumps.
             pose = tick.smoothed if use_filter else tick.raw
             if tick.new_pose:
@@ -145,11 +152,14 @@ def main() -> int:
                 f"pose {metrics.tracking_fps:.1f} fps, {fmt(metrics.latency_ms, '.0f', '-')} ms",
                 f"hands {hands_text} [h]",
                 f"model {args.model} | filter {'on' if use_filter else 'off'} [f] | scene {'on' if show_scene else 'off'} [g]",
+                f"meme {meme or '-' if show_memes else 'off'} [m]",
                 # A few names per line: hand shapes, directions and finger counts add up fast.
                 *(("states: " if i == 0 else "        ") + ", ".join(states[i:i + 4]) for i in range(0, len(states), 4)),
             ])
             if now < banner_until:
                 renderer.draw_banner(view, banner)
+            if show_memes and meme in meme_images:
+                renderer.draw_meme(view, meme_images[meme], config.MEME_BOX, config.MEME_MARGIN)
 
             wait_ms = 1
             if args.input:  # play no faster than real time; slower if inference can't keep up
@@ -165,6 +175,8 @@ def main() -> int:
                 show_scene = not show_scene
                 if world is not None:
                     world.reset_ball()
+            if key == config.MEME_KEY:
+                show_memes = not show_memes
             if key == config.HANDS_KEY and not args.no_hands:
                 pipeline.hands_enabled = not pipeline.hands_enabled
     except PipelineError as e:
