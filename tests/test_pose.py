@@ -23,11 +23,11 @@ def test_first_pose_converted_and_missing_visibility_is_zero() -> None:
 
 def test_display_points_mirror_x_and_hide_invisible() -> None:
     pose = PoseFrame(0, (Landmark(0.25, 0.5, 0.0, 0.9), Landmark(0.5, 0.5, 0.0, 0.1)))
-    assert display_points(pose, 200, 100, min_visibility=0.5) == [(150, 50), None]
+    assert display_points(pose.landmarks, 200, 100, min_visibility=0.5) == [(150, 50), None]
 
 
 def test_display_points_without_person_is_empty() -> None:
-    assert display_points(PoseFrame(0, None), 200, 100, 0.5) == []
+    assert display_points(None, 200, 100, 0.5) == []
 
 
 def test_skeleton_indices_in_range() -> None:

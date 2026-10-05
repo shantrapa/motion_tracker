@@ -1,9 +1,13 @@
+import math
+
 from motion.contract import (
-    LEFT_INDEX, LEFT_PINKY, LEFT_WRIST, RIGHT_INDEX, RIGHT_PINKY, RIGHT_WRIST, PoseFrame,
+    HAND_WRIST, LEFT_INDEX, LEFT_PINKY, LEFT_WRIST, RIGHT_INDEX, RIGHT_PINKY, RIGHT_WRIST,
+    HandsFrame, Landmark, PoseFrame,
 )
 
 Point = tuple[int, int]
 NormPoint = tuple[float, float]
+Hand = tuple[Landmark, ...]
 
 _HAND_POINTS: dict[str, dict[str, tuple[int, ...]]] = {
     "left": {"wrist": (LEFT_WRIST,), "palm": (LEFT_WRIST, LEFT_INDEX, LEFT_PINKY)},
@@ -16,14 +20,41 @@ def to_display(p: NormPoint, width: int, height: int) -> Point:
     return round((1.0 - p[0]) * width), round(p[1] * height)
 
 
-def display_points(pose: PoseFrame, width: int, height: int, min_visibility: float) -> list[Point | None]:
+def display_points(
+    landmarks: tuple[Landmark, ...] | None, width: int, height: int, min_visibility: float
+) -> list[Point | None]:
     """Landmarks in mirrored display pixels; None for points below min_visibility."""
-    if pose.landmarks is None:
+    if landmarks is None:
         return []
     return [
         to_display((lm.x, lm.y), width, height) if lm.visibility >= min_visibility else None
-        for lm in pose.landmarks
+        for lm in landmarks
     ]
+
+
+def assign_hands(pose: PoseFrame | None, hands: HandsFrame | None) -> dict[str, Hand | None]:
+    """Give each detected hand the side of the nearest pose wrist (raw normalized coords).
+    The hand model's own handedness is ignored: it flips easily, the pose wrists do not.
+    With two hands the pairing with the smaller total distance wins, so both never land on one side.
+    No pose -> no sides -> nothing assigned."""
+    sides: dict[str, Hand | None] = {"left": None, "right": None}
+    if pose is None or pose.landmarks is None or hands is None or not hands.hands:
+        return sides
+    wrists = {"left": pose.landmarks[LEFT_WRIST], "right": pose.landmarks[RIGHT_WRIST]}
+
+    def dist(hand: Hand, side: str) -> float:
+        return math.dist((hand[HAND_WRIST].x, hand[HAND_WRIST].y), (wrists[side].x, wrists[side].y))
+
+    if len(hands.hands) == 1:
+        hand = hands.hands[0]
+        sides[min(wrists, key=lambda side: dist(hand, side))] = hand
+        return sides
+    a, b = hands.hands[:2]
+    if dist(a, "left") + dist(b, "right") <= dist(a, "right") + dist(b, "left"):
+        sides["left"], sides["right"] = a, b
+    else:
+        sides["left"], sides["right"] = b, a
+    return sides
 
 
 def hand_center(pose: PoseFrame, side: str, mode: str, min_visibility: float) -> NormPoint | None:

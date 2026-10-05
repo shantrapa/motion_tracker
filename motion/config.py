@@ -11,6 +11,7 @@ WINDOW_NAME: str = "motion"
 QUIT_KEYS: tuple[int, ...] = (ord("q"), 27)  # q, Esc
 SKELETON_KEY: int = ord("s")
 FILTER_KEY: int = ord("f")
+HANDS_KEY: int = ord("h")
 
 # Metrics
 METRICS_WINDOW_S: float = 1.0  # fps and median latency are computed over this window
@@ -20,6 +21,11 @@ POSE_DETECTION_CONFIDENCE: float = 0.5
 POSE_PRESENCE_CONFIDENCE: float = 0.5
 TRACKING_CONFIDENCE: float = 0.5
 LANDMARK_VISIBILITY_THRESHOLD: float = 0.5
+
+# Hand model thresholds
+HAND_DETECTION_CONFIDENCE: float = 0.5
+HAND_PRESENCE_CONFIDENCE: float = 0.5
+HAND_TRACKING_CONFIDENCE: float = 0.5
 
 # Hand circles
 HAND_CENTER: str = "wrist"  # wrist | palm (mean of wrist, index, pinky)
@@ -40,6 +46,13 @@ MODEL_URL_TEMPLATE: str = (
     "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
     "pose_landmarker_{v}/float16/latest/pose_landmarker_{v}.task"
 )
+
+
+HAND_MODEL_URL: str = (
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
+    "hand_landmarker/float16/latest/hand_landmarker.task"
+)
+HAND_MODEL_PATH: Path = MODELS_DIR / "hand_landmarker.task"
 
 
 def model_path(variant: str = MODEL_VARIANT) -> Path:

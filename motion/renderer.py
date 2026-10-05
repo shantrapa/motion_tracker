@@ -9,17 +9,25 @@ def mirror(frame: np.ndarray) -> np.ndarray:
     return cv2.flip(frame, 1)
 
 
-def draw_skeleton(frame: np.ndarray, points: list[Point | None], connections: tuple[tuple[int, int], ...]) -> None:
-    for a, b in connections:
-        if a < len(points) and b < len(points) and points[a] and points[b]:
-            cv2.line(frame, points[a], points[b], (255, 255, 255), 2, cv2.LINE_AA)
-    for p in points:
-        if p:
-            cv2.circle(frame, p, 4, (0, 200, 255), -1, cv2.LINE_AA)
-
-
 LEFT_HAND_COLOR = (255, 128, 0)   # BGR blue: person's left hand
 RIGHT_HAND_COLOR = (60, 60, 255)  # BGR red: person's right hand
+SIDE_COLORS = {"left": LEFT_HAND_COLOR, "right": RIGHT_HAND_COLOR}
+
+
+def draw_skeleton(
+    frame: np.ndarray,
+    points: list[Point | None],
+    connections: tuple[tuple[int, int], ...],
+    line_color: tuple[int, int, int] = (255, 255, 255),
+    point_color: tuple[int, int, int] = (0, 200, 255),
+    point_radius: int = 4,
+) -> None:
+    for a, b in connections:
+        if a < len(points) and b < len(points) and points[a] and points[b]:
+            cv2.line(frame, points[a], points[b], line_color, 2, cv2.LINE_AA)
+    for p in points:
+        if p:
+            cv2.circle(frame, p, point_radius, point_color, -1, cv2.LINE_AA)
 
 
 def draw_hands(frame: np.ndarray, left: Point | None, right: Point | None, radius: int) -> None:

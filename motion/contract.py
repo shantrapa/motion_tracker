@@ -40,3 +40,22 @@ SKELETON: tuple[tuple[int, int], ...] = (
     (23, 25), (25, 27), (27, 29), (29, 31), (27, 31),
     (24, 26), (26, 28), (28, 30), (30, 32), (28, 32),
 )
+
+
+@dataclass(frozen=True)
+class HandsFrame:
+    timestamp_ms: int
+    hands: tuple[tuple[Landmark, ...], ...]  # 0..2 hands of 21 points; side unknown until matched to pose wrists
+
+
+NUM_HAND_LANDMARKS = 21
+HAND_WRIST = 0
+
+HAND_SKELETON: tuple[tuple[int, int], ...] = (
+    (0, 1), (1, 2), (2, 3), (3, 4),          # thumb
+    (0, 5), (5, 6), (6, 7), (7, 8),          # index
+    (9, 10), (10, 11), (11, 12),             # middle
+    (13, 14), (14, 15), (15, 16),            # ring
+    (0, 17), (17, 18), (18, 19), (19, 20),   # pinky
+    (5, 9), (9, 13), (13, 17),               # palm
+)

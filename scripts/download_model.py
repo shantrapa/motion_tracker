@@ -1,4 +1,4 @@
-"""Download a PoseLandmarker model: python scripts/download_model.py [lite|full|heavy]"""
+"""Download a model: python scripts/download_model.py [lite|full|heavy|hand]  (pose variants or the hand model)"""
 
 import sys
 import urllib.request
@@ -10,16 +10,16 @@ from motion import config  # noqa: E402
 
 def main() -> int:
     variant = sys.argv[1] if len(sys.argv) > 1 else config.MODEL_VARIANT
-    if variant not in ("lite", "full", "heavy"):
-        print(f"error: unknown variant '{variant}', use lite, full or heavy", file=sys.stderr)
+    if variant not in ("lite", "full", "heavy", "hand"):
+        print(f"error: unknown variant '{variant}', use lite, full, heavy or hand", file=sys.stderr)
         return 1
 
-    dest = config.model_path(variant)
+    dest = config.HAND_MODEL_PATH if variant == "hand" else config.model_path(variant)
     if dest.exists():
         print(f"already present: {dest}")
         return 0
 
-    url = config.MODEL_URL_TEMPLATE.format(v=variant)
+    url = config.HAND_MODEL_URL if variant == "hand" else config.MODEL_URL_TEMPLATE.format(v=variant)
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".part")  # no half-written .task if the download dies
     print(f"downloading {url}")

@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from motion import config
-from motion.contract import PoseFrame
+from motion.contract import HandsFrame, PoseFrame
 from motion.metrics import Metrics
 
 
@@ -14,14 +14,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", choices=("lite", "full", "heavy"), default=config.MODEL_VARIANT)
     parser.add_argument("--log", type=Path, metavar="CSV", help="write metrics once per second")
     parser.add_argument("--input", type=Path, metavar="VIDEO", help="process a video file instead of the camera")
+    parser.add_argument("--no-hands", action="store_true", help="do not load the finger (hand) model")
     return parser.parse_args()
+
+
+def fmt(value: float | None, spec: str, missing: str) -> str:
+    return missing if value is None else format(value, spec)
 
 
 def main() -> int:
     args = parse_args()
     try:
         from motion import capture, geometry, renderer, smoothing, tracker
-        from motion.contract import SKELETON
+        from motion.contract import HAND_SKELETON, SKELETON
     except ModuleNotFoundError as e:
         print(f"error: missing dependency '{e.name}', run: python -m pip install mediapipe", file=sys.stderr)
         return 1
@@ -33,14 +38,13 @@ def main() -> int:
         return 1
     log = csv.writer(log_file) if log_file else None
     if log:
-        log.writerow(["t_s", "model", "render_fps", "tracking_fps", "latency_ms_median"])
+        log.writerow(["t_s", "model", "hands", "render_fps", "tracking_fps", "latency_ms_median",
+                      "hand_tracking_fps", "hand_latency_ms_median"])
 
     try:
         pose_tracker = tracker.Tracker(
             config.model_path(args.model),
-            config.POSE_DETECTION_CONFIDENCE,
-            config.POSE_PRESENCE_CONFIDENCE,
-            config.TRACKING_CONFIDENCE,
+            None if args.no_hands else config.HAND_MODEL_PATH,
             video=args.input is not None,
         )
     except tracker.TrackerError as e:
@@ -58,17 +62,24 @@ def main() -> int:
         return 1
 
     metrics = Metrics(config.METRICS_WINDOW_S)
+    hand_metrics = Metrics(config.METRICS_WINDOW_S)
     holds = {side: geometry.HeldPoint(config.LOST_HOLD_MS) for side in ("left", "right")}
-    hands: dict[str, geometry.NormPoint | None] = {"left": None, "right": None}
+    circles: dict[str, geometry.NormPoint | None] = {"left": None, "right": None}
     smoother = smoothing.PoseSmoother(
         config.ONE_EURO_MIN_CUTOFF, config.ONE_EURO_BETA, config.ONE_EURO_D_CUTOFF, config.FILTER_RESET_MS
     )
     raw: PoseFrame | None = None
     smoothed: PoseFrame | None = None
+    last_hands: HandsFrame | None = None
     show_skeleton = True
     use_filter = True
     failures = 0
     started = time.monotonic()
+
+    def latency(ts_ms: int) -> float | None:
+        # File timestamps are on the video timeline, so wall-clock latency is meaningless there.
+        return None if args.input else time.monotonic() * 1000 - ts_ms
+
     try:
         while True:
             captured = source.read()
@@ -84,11 +95,15 @@ def main() -> int:
             frame, frame_ms = captured
             pose_tracker.send(frame, frame_ms)
 
-            latest = pose_tracker.latest()
+            latest_hands = pose_tracker.latest_hands()
+            if latest_hands is not None and latest_hands is not last_hands:
+                last_hands = latest_hands
+                hand_metrics.on_result(latency(latest_hands.timestamp_ms))
+
+            latest = pose_tracker.latest_pose()
             is_new = latest is not None and (raw is None or latest.timestamp_ms != raw.timestamp_ms)
             if is_new:
-                # File timestamps are on the video timeline, so wall-clock latency is meaningless there.
-                metrics.on_result(None if args.input else time.monotonic() * 1000 - latest.timestamp_ms)
+                metrics.on_result(latency(latest.timestamp_ms))
                 # Filter state stays warm even when display is unfiltered, so toggling 'f' never jumps.
                 raw, smoothed = latest, smoother(latest)
             pose = smoothed if use_filter else raw
@@ -97,27 +112,42 @@ def main() -> int:
                     center = geometry.hand_center(
                         pose, side, config.HAND_CENTER, config.LANDMARK_VISIBILITY_THRESHOLD
                     )
-                    hands[side] = hold.update(center, pose.timestamp_ms)
+                    circles[side] = hold.update(center, pose.timestamp_ms)
 
             view = renderer.mirror(frame)
             height, width = view.shape[:2]
             if show_skeleton and pose is not None:
-                points = geometry.display_points(pose, width, height, config.LANDMARK_VISIBILITY_THRESHOLD)
+                points = geometry.display_points(
+                    pose.landmarks, width, height, config.LANDMARK_VISIBILITY_THRESHOLD
+                )
                 renderer.draw_skeleton(view, points, SKELETON)
-            left, right = (geometry.to_display(h, width, height) if h else None for h in hands.values())
+            if pose_tracker.hands_enabled:
+                # Match on raw pose: same (unfiltered) timeline as the hand results.
+                for side, hand in geometry.assign_hands(raw, last_hands).items():
+                    if hand:
+                        color = renderer.SIDE_COLORS[side]
+                        points = geometry.display_points(hand, width, height, 0.0)
+                        renderer.draw_skeleton(view, points, HAND_SKELETON, color, color, 3)
+            left, right = (geometry.to_display(c, width, height) if c else None for c in circles.values())
             renderer.draw_hands(view, left, right, config.HAND_CIRCLE_RADIUS)
 
             now = time.monotonic()
+            hand_metrics.on_frame(now)
             if metrics.on_frame(now) and log:
-                latency = f"{metrics.latency_ms:.1f}" if metrics.latency_ms is not None else ""
-                log.writerow([f"{now - started:.1f}", args.model,
-                              f"{metrics.render_fps:.1f}", f"{metrics.tracking_fps:.1f}", latency])
+                log.writerow([
+                    f"{now - started:.1f}", args.model, int(pose_tracker.hands_enabled),
+                    f"{metrics.render_fps:.1f}", f"{metrics.tracking_fps:.1f}", fmt(metrics.latency_ms, ".1f", ""),
+                    f"{hand_metrics.tracking_fps:.1f}", fmt(hand_metrics.latency_ms, ".1f", ""),
+                ])
                 log_file.flush()
-            latency_text = f"{metrics.latency_ms:.0f} ms" if metrics.latency_ms is not None else "-"
+            hands_text = (
+                f"{hand_metrics.tracking_fps:.1f} fps, {fmt(hand_metrics.latency_ms, '.0f', '-')} ms"
+                if pose_tracker.hands_enabled else "off"
+            )
             renderer.draw_overlay(view, [
                 f"render {metrics.render_fps:.1f} fps",
-                f"tracking {metrics.tracking_fps:.1f} fps",
-                f"latency {latency_text}",
+                f"pose {metrics.tracking_fps:.1f} fps, {fmt(metrics.latency_ms, '.0f', '-')} ms",
+                f"hands {hands_text} [h]",
                 f"model {args.model} | filter {'on' if use_filter else 'off'} [f]",
             ])
 
@@ -131,6 +161,8 @@ def main() -> int:
                 show_skeleton = not show_skeleton
             if key == config.FILTER_KEY:
                 use_filter = not use_filter
+            if key == config.HANDS_KEY and not args.no_hands:
+                pose_tracker.hands_enabled = not pose_tracker.hands_enabled
     except KeyboardInterrupt:
         return 0
     finally:
