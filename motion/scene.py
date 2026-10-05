@@ -1,7 +1,7 @@
 """Interactive scene driven by the hands. Display pixel coordinates, y down. Pure Python.
 
 Colliders (hand circles, fingertips) push the ball; a pinch inside the ball picks it up,
-releasing the pinch throws it with the hand's velocity."""
+releasing the pinch throws it with the hand's velocity; losing the hand while holding just drops it."""
 
 import math
 from dataclasses import dataclass
@@ -94,9 +94,14 @@ class Scene:
         return motion.velocity
 
     def update(
-        self, colliders: dict[str, Collider | None], pinches: dict[str, Vec | None], now_s: float,
+        self,
+        colliders: dict[str, Collider | None],
+        pinches: dict[str, Vec | None],
+        now_s: float,
+        cancelled: frozenset[str] = frozenset(),
     ) -> list[str]:
-        """colliders: name -> (center, radius) or None; pinches: side -> pinch point or None (not pinching).
+        """colliders: name -> (center, radius) or None; pinches: side -> pinch point or None (not pinching);
+        cancelled: sides whose pinch ended because the hand was lost (spec §68), not opened.
         Returns events ("button")."""
         dt = 0.0 if self._last_s is None else min(max(now_s - self._last_s, 0.0), self.max_dt)
         self._last_s = now_s
@@ -106,8 +111,10 @@ class Scene:
         b = self.ball
         if self.held_by is not None:
             point = pinches.get(self.held_by)
-            if point is None:  # pinch opened: throw
-                b.vx, b.vy = self._cap(pinch_v.get(self.held_by, (0.0, 0.0)))
+            if point is None:
+                # Opened: throw with the hand's velocity. Lost: a tracking glitch is not a throw, just let go.
+                lost = self.held_by in cancelled
+                b.vx, b.vy = (0.0, 0.0) if lost else self._cap(pinch_v.get(self.held_by, (0.0, 0.0)))
                 self.held_by = None
             else:
                 b.x, b.y = self._inside(point)

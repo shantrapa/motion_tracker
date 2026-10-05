@@ -114,3 +114,13 @@ def test_short_touch_does_not_press() -> None:
     s = scene()
     events = run(s, [hands(right=(640, 90))] * 10 + [{}] * 10)  # 0.33 s
     assert events == [] and s.presses == 0 and s.button_progress == 0.0
+
+
+def test_losing_the_hand_while_holding_drops_without_throwing() -> None:
+    s = scene()
+    path = [(640 + 20 * i, 360) for i in range(10)]  # moving at 600 px/s when the hand is lost
+    run(s, [({}, {"right": p}) for p in path])
+    s.update({}, {"right": None}, 10 / FPS, cancelled=frozenset({"right"}))
+    run(s, [({}, {})] * 3, start=11 / FPS)
+    assert s.held_by is None
+    assert (s.ball.vx, s.ball.vy) == (0.0, 0.0) and s.ball.x == path[-1][0]

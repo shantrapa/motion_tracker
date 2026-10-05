@@ -26,7 +26,8 @@ def fmt(value: float | None, spec: str, missing: str) -> str:
 def main() -> int:
     args = parse_args()
     try:
-        from motion import capture, geometry, poses, renderer, scene, smoothing, tracker
+        from motion import capture, event_engine, geometry, renderer, scene, smoothing, tracker
+        from motion.events import EventType, GestureEvent
         from motion.contract import HAND_FINGERTIPS, HAND_SKELETON, NUM_HAND_LANDMARKS, SKELETON
     except ModuleNotFoundError as e:
         print(f"error: missing dependency '{e.name}', run: python -m pip install mediapipe", file=sys.stderr)
@@ -86,8 +87,7 @@ def main() -> int:
     use_filter = True
     world: scene.Scene | None = None  # created on the first frame, when the frame size is known
     show_scene = args.scene
-    recognizer = poses.ActionRecognizer()
-    pinchers = {side: geometry.Pinch(config.PINCH_ON, config.PINCH_OFF) for side in ("left", "right")}
+    engine = event_engine.GestureEngine()
     banner, banner_until = "", 0.0
     failures = 0
     started = time.monotonic()
@@ -110,17 +110,22 @@ def main() -> int:
             failures = 0
             frame, frame_ms = captured
             pose_tracker.send(frame, frame_ms)
+            aspect = frame.shape[1] / frame.shape[0]
+            events: list[GestureEvent] = []
 
             latest_hands = pose_tracker.latest_hands()
             if latest_hands is not None and latest_hands is not last_hands:
                 last_hands = latest_hands
                 hand_metrics.on_result(latency(latest_hands.timestamp_ms))
                 # Match on raw pose: same (unfiltered) timeline as the hand results.
-                raw_fingers = geometry.assign_hands(raw, latest_hands)
+                raw_fingers = geometry.assign_hands(raw, latest_hands, config.MAX_SYNC_DELTA_MS)
                 smooth_fingers = {
                     side: finger_smoothers[side](hand, latest_hands.timestamp_ms) if hand else None
                     for side, hand in raw_fingers.items()
                 }
+                events += engine.update_hands(smooth_fingers, latest_hands.timestamp_ms, aspect)
+            if not pose_tracker.hands_enabled:
+                events += engine.update_hands({}, frame_ms, aspect)  # 'h' off mid-pinch: cancel, not hold forever
 
             latest = pose_tracker.latest_pose()
             is_new = latest is not None and (raw is None or latest.timestamp_ms != raw.timestamp_ms)
@@ -129,9 +134,13 @@ def main() -> int:
                 # Filter state stays warm even when display is unfiltered, so toggling 'f' never jumps.
                 raw, smoothed = latest, smoother(latest)
                 # Always on the smoothed pose (independent of the 'f' toggle): fewer false triggers.
-                events = recognizer.update(smoothed, frame.shape[1] / frame.shape[0])
-                if events:
-                    banner, banner_until = " + ".join(e.replace("_", " ").upper() for e in events), time.monotonic() + config.EVENT_SHOW_S
+                events += engine.update_pose(smoothed, aspect)
+            shown = [e.type.name.replace("_", " ") for e in events if "PINCH" not in e.type.name]  # pinch has its own dot
+            if shown:
+                banner, banner_until = " + ".join(shown), time.monotonic() + config.EVENT_SHOW_S
+            cancelled = frozenset(
+                side for side in ("left", "right") if EventType[f"{side.upper()}_PINCH_CANCELLED"] in {e.type for e in events}
+            )
             pose = smoothed if use_filter else raw
             if is_new:
                 for side, hold in holds.items():
@@ -151,7 +160,10 @@ def main() -> int:
                 side: geometry.display_points(hand, width, height, 0.0) if hand and pose_tracker.hands_enabled else None
                 for side, hand in (smooth_fingers if use_filter else raw_fingers).items()
             }
-            pinches = {side: pinchers[side].update(points) for side, points in fingers.items()}
+            pinches = {
+                side: geometry.to_display(p, width, height) if (p := engine.pinch_point(side)) else None
+                for side in ("left", "right")
+            }
             for side, points in fingers.items():
                 if points:
                     color = renderer.SIDE_COLORS[side]
@@ -177,7 +189,7 @@ def main() -> int:
                     for tip in HAND_FINGERTIPS:
                         p = points[tip] if points else None
                         colliders[f"{side}:tip{tip}"] = (p, config.FINGERTIP_RADIUS) if p else None
-                world.update(colliders, pinches, time.monotonic())
+                world.update(colliders, pinches, time.monotonic(), cancelled)
                 renderer.draw_button(view, world.button_center, config.BUTTON_RADIUS, world.button_progress, world.presses)
                 renderer.draw_ball(view, (world.ball.x, world.ball.y), config.BALL_RADIUS, held=world.held_by is not None)
             renderer.draw_hands(view, left, right, config.HAND_CIRCLE_RADIUS)
@@ -200,7 +212,7 @@ def main() -> int:
                 f"pose {metrics.tracking_fps:.1f} fps, {fmt(metrics.latency_ms, '.0f', '-')} ms",
                 f"hands {hands_text} [h]",
                 f"model {args.model} | filter {'on' if use_filter else 'off'} [f] | scene {'on' if show_scene else 'off'} [g]",
-                f"poses: {', '.join(sorted(recognizer.active)) or '-'}",
+                f"states: {', '.join(sorted(s.name for s in engine.states)) or '-'}",
             ])
             if now < banner_until:
                 renderer.draw_banner(view, banner)

@@ -24,6 +24,7 @@ TRACKING_CONFIDENCE: float = 0.5
 LANDMARK_VISIBILITY_THRESHOLD: float = 0.5
 
 # Hand model thresholds
+MAX_SYNC_DELTA_MS: int = 150  # match hands to a pose only if their timestamps are this close (spec §66)
 HAND_DETECTION_CONFIDENCE: float = 0.5
 HAND_PRESENCE_CONFIDENCE: float = 0.5
 HAND_TRACKING_CONFIDENCE: float = 0.5
@@ -64,6 +65,7 @@ PUNCH_SPEED: float = 4.0         # arm straightening speed, shoulder widths/s
 PUNCH_MIN_EXT: float = 1.0       # shoulder-wrist distance at the end of the punch
 PUNCH_Y_TOL: float = 0.6         # wrist within this of shoulder height (raising arms is not a punch)
 PUNCH_COOLDOWN_MS: int = 400     # one punch per arm per this period
+JUMP_COOLDOWN_MS: int = 500      # one jump per this period
 EVENT_SHOW_S: float = 1.0        # how long an event banner stays on screen
 
 # Smoothing (One Euro Filter on normalized coords)

@@ -1,14 +1,30 @@
 import math
 
 from motion.contract import (
-    HAND_INDEX_TIP, HAND_MIDDLE_MCP, HAND_THUMB_TIP, HAND_WRIST,
-    LEFT_INDEX, LEFT_PINKY, LEFT_WRIST, RIGHT_INDEX, RIGHT_PINKY, RIGHT_WRIST,
+    HAND_WRIST, LEFT_INDEX, LEFT_PINKY, LEFT_WRIST, RIGHT_INDEX, RIGHT_PINKY, RIGHT_WRIST,
     HandsFrame, Landmark, PoseFrame,
 )
 
 Point = tuple[int, int]
 NormPoint = tuple[float, float]
 Hand = tuple[Landmark, ...]
+Vec2 = tuple[float, float]
+
+
+def iso(lm: Landmark, aspect: float) -> Vec2:
+    """Raw normalized coords -> isotropic ones (x * width/height, y): equal scale on both axes,
+    so angles and distances mean the same thing horizontally and vertically."""
+    return lm.x * aspect, lm.y
+
+
+def angle(a: Vec2, b: Vec2, c: Vec2) -> float:
+    """Angle ABC in degrees (spec §52): shoulder-elbow-wrist, hip-knee-ankle, ..."""
+    ux, uy = a[0] - b[0], a[1] - b[1]
+    vx, vy = c[0] - b[0], c[1] - b[1]
+    norm = math.hypot(ux, uy) * math.hypot(vx, vy)
+    if norm < 1e-12:
+        return 180.0
+    return math.degrees(math.acos(max(-1.0, min(1.0, (ux * vx + uy * vy) / norm))))
 
 _HAND_POINTS: dict[str, dict[str, tuple[int, ...]]] = {
     "left": {"wrist": (LEFT_WRIST,), "palm": (LEFT_WRIST, LEFT_INDEX, LEFT_PINKY)},
@@ -33,13 +49,15 @@ def display_points(
     ]
 
 
-def assign_hands(pose: PoseFrame | None, hands: HandsFrame | None) -> dict[str, Hand | None]:
+def assign_hands(pose: PoseFrame | None, hands: HandsFrame | None, max_delta_ms: int) -> dict[str, Hand | None]:
     """Give each detected hand the side of the nearest pose wrist (raw normalized coords).
     The hand model's own handedness is ignored: it flips easily, the pose wrists do not.
     With two hands the pairing with the smaller total distance wins, so both never land on one side.
-    No pose -> no sides -> nothing assigned."""
+    No pose, or a pose more than max_delta_ms apart from the hands (spec §66) -> nothing assigned."""
     sides: dict[str, Hand | None] = {"left": None, "right": None}
     if pose is None or pose.landmarks is None or hands is None or not hands.hands:
+        return sides
+    if abs(hands.timestamp_ms - pose.timestamp_ms) > max_delta_ms:
         return sides
     wrists = {"left": pose.landmarks[LEFT_WRIST], "right": pose.landmarks[RIGHT_WRIST]}
 
@@ -86,27 +104,3 @@ class HeldPoint:
             self._last = None
         return self._last
 
-
-class Pinch:
-    """Thumb tip and index tip together = pinching. Distances relative to palm size, so it works at any
-    distance from the camera; separate on/off thresholds so it does not flicker at the boundary."""
-
-    def __init__(self, on_ratio: float, off_ratio: float) -> None:
-        self.on_ratio = on_ratio
-        self.off_ratio = off_ratio
-        self.active = False
-
-    def update(self, points: list[Point | None] | None) -> tuple[float, float] | None:
-        """points: the 21 hand landmarks in display pixels (or None if no hand). Returns the pinch point."""
-        needed = (HAND_WRIST, HAND_MIDDLE_MCP, HAND_THUMB_TIP, HAND_INDEX_TIP)
-        if not points or any(points[i] is None for i in needed):
-            self.active = False
-            return None
-        palm = math.dist(points[HAND_WRIST], points[HAND_MIDDLE_MCP])
-        if palm < 1e-6:
-            self.active = False
-            return None
-        thumb, index = points[HAND_THUMB_TIP], points[HAND_INDEX_TIP]
-        ratio = math.dist(thumb, index) / palm
-        self.active = ratio < (self.off_ratio if self.active else self.on_ratio)
-        return ((thumb[0] + index[0]) / 2, (thumb[1] + index[1]) / 2) if self.active else None

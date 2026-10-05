@@ -75,7 +75,11 @@ capture → tracker → smoothing → renderer
 | `geometry.py` | mirroring, pixel conversion, hand centers, lost-hand hold, matching hands to pose wrists |
 | `smoothing.py` | One Euro Filter |
 | `scene.py` | ball physics, pushes, pinch grab and throw, dwell button |
-| `poses.py` | pose classification, debouncing, jump and punch state machines |
+| `events.py` | `State`, `EventType`, `GestureEvent` (type, time, confidence) |
+| `body_state.py` | body states in one frame: arms up, T-pose, lean, squat |
+| `hand_state.py` | pinch with started / released / cancelled lifecycle |
+| `action_detector.py`, `gesture_detector.py` | jump and punch over several frames |
+| `event_engine.py` | debounce, cooldowns, `GestureEngine` turning states and detector hits into events |
 | `metrics.py` | FPS and latency over a time window |
 | `renderer.py` | all OpenCV drawing and the window |
 | `config.py` | every tunable number |
@@ -83,7 +87,8 @@ capture → tracker → smoothing → renderer
 - Inference runs on the raw, unmirrored frame, so left and right stay anatomically correct. Only the displayed image and the coordinates are mirrored.
 - MediaPipe drops frames itself when it is busy. There is no frame queue.
 - Callbacks only convert and store results. All drawing happens in the main loop.
-- `contract`, `geometry`, `smoothing`, `metrics`, `scene` and `poses` are plain Python with no dependencies: this is the part meant to be ported to Kotlin.
+- Gesture recognition follows [docs/MOTION_GESTURES_SPEC.md](docs/MOTION_GESTURES_SPEC.md); the app consumes events, never raw landmarks.
+- Everything except `capture`, `tracker` and `renderer` is plain Python with no dependencies: this is the part meant to be ported to Kotlin.
 
 ## Tuning
 
