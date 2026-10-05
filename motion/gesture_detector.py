@@ -6,30 +6,44 @@ import math
 
 from motion import config
 from motion.contract import Landmark
-from motion.geometry import Vec2
+from motion.geometry import Vec2, angle, iso
 from motion.motion_history import MotionHistory
 
 
 class PunchDetector:
-    """Fast straightening of one arm at shoulder height: shoulder-wrist distance (z included) growing fast.
-    The height check keeps "raise the arms" from counting. Fires on every fast frame; the engine dedups."""
+    """A bent arm straightening fast at shoulder height (spec §22: speed, elbow, arm length, direction).
+    Arm length is the 3-D shoulder-wrist distance, so punches toward the camera count. But MediaPipe exaggerates
+    wrist depth, and a fast forward raise of a straight arm then looks like a growing arm too. Two checks rule
+    that out: the elbow must have been bent shortly before (a straight arm never is), and the wrist must not
+    have travelled far vertically since. Fires on every qualifying frame; the engine's cooldown dedups."""
 
     def __init__(self) -> None:
         self.reset()
 
     def reset(self) -> None:
         self._prev: tuple[float, int] | None = None  # (extension, ms)
+        self._bent: tuple[int, float] | None = None  # (ms, wrist y) of the last frame with a bent elbow
 
-    def update(self, shoulder: Landmark, wrist: Landmark, aspect: float, unit: float, now_ms: int) -> bool:
+    def update(
+        self, shoulder: Landmark, elbow: Landmark | None, wrist: Landmark, aspect: float, unit: float, now_ms: int,
+    ) -> bool:
+        """elbow: None when not visible; then the punch cannot be confirmed."""
         ext = math.dist(
             (shoulder.x * aspect, shoulder.y, shoulder.z * aspect), (wrist.x * aspect, wrist.y, wrist.z * aspect)
         ) / unit
         prev, self._prev = self._prev, (ext, now_ms)
-        if prev is None or now_ms <= prev[1]:
+        if elbow is not None:
+            if angle(iso(shoulder, aspect), iso(elbow, aspect), iso(wrist, aspect)) < config.PUNCH_BENT_DEG:
+                self._bent = (now_ms, wrist.y)
+        if prev is None or now_ms <= prev[1] or self._bent is None:
             return False
+        bent_ms, bent_y = self._bent
+        was_bent = now_ms - bent_ms <= config.PUNCH_WINDOW_MS
+        level_move = abs(wrist.y - bent_y) < config.PUNCH_MAX_RISE * unit
         speed = (ext - prev[0]) / ((now_ms - prev[1]) / 1000)
         at_shoulder_height = abs(wrist.y - shoulder.y) < config.PUNCH_Y_TOL * unit
-        return speed > config.PUNCH_SPEED and ext > config.PUNCH_MIN_EXT and at_shoulder_height
+        return (was_bent and level_move and at_shoulder_height
+                and speed > config.PUNCH_SPEED and ext > config.PUNCH_MIN_EXT)
 
 
 class SwipeDetector:

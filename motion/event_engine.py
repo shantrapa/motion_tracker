@@ -157,7 +157,8 @@ class GestureEngine:
                 self._wrist_path[side].clear()
                 continue
             conf = min(shoulder.visibility, wrist.visibility)
-            if self._punch[side].update(shoulder, wrist, aspect, unit, now):
+            seen_elbow = elbow if elbow.visibility >= min_vis else None
+            if self._punch[side].update(shoulder, seen_elbow, wrist, aspect, unit, now):
                 self._emit(events, EventType[f"{prefix}_PUNCH"], now, conf)
             path = self._wrist_path[side]
             path.add(now, iso(wrist, aspect))

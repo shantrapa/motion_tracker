@@ -1,4 +1,4 @@
-from motion.contract import LEFT_WRIST, RIGHT_WRIST, PoseFrame
+from motion.contract import LEFT_WRIST, RIGHT_ELBOW, RIGHT_WRIST, PoseFrame
 from motion.event_engine import Cooldown, Debounce, GestureEngine
 from motion.events import EventType, State
 
@@ -95,3 +95,18 @@ def test_events_carry_time_and_confidence() -> None:
     assert raised[0].timestamp_ms == 264  # first frame at or past the 250 ms hold
     assert raised[0].confidence == 0.9
     assert State.BOTH_ARMS_UP in engine.states
+
+
+def test_raising_a_straight_arm_is_not_a_punch() -> None:
+    # Reported on the live camera: a fast forward raise counted as a punch. The arm stays straight
+    # (1.25 shoulder widths), but MediaPipe exaggerates wrist depth, so the 3-D shoulder-wrist distance
+    # "grows" fast while the wrist passes shoulder height.
+    import math
+    frames = []
+    for i in range(40):
+        theta = math.pi * min(max(i - 10, 0), 10) / 10  # still for 10 frames, then down -> up in 0.33 s
+        y = 0.3 + 0.25 * math.cos(theta)
+        z = -2 * 0.25 * math.sin(theta)                 # depth exaggerated 2x
+        elbow = (0.4, (0.3 + y) / 2, z / 2)               # straight arm: elbow halfway
+        frames.append(pose({RIGHT_WRIST: (0.4, y, z), RIGHT_ELBOW: elbow}, t=i * 33))
+    assert run(frames, only={EventType.LEFT_PUNCH, EventType.RIGHT_PUNCH}) == []
