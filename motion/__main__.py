@@ -27,7 +27,7 @@ def main() -> int:
     args = parse_args()
     try:
         from motion import capture, geometry, poses, renderer, scene, smoothing, tracker
-        from motion.contract import HAND_SKELETON, NUM_HAND_LANDMARKS, SKELETON
+        from motion.contract import HAND_FINGERTIPS, HAND_SKELETON, NUM_HAND_LANDMARKS, SKELETON
     except ModuleNotFoundError as e:
         print(f"error: missing dependency '{e.name}', run: python -m pip install mediapipe", file=sys.stderr)
         return 1
@@ -87,6 +87,7 @@ def main() -> int:
     world: scene.Scene | None = None  # created on the first frame, when the frame size is known
     show_scene = args.scene
     recognizer = poses.ActionRecognizer()
+    pinchers = {side: geometry.Pinch(config.PINCH_ON, config.PINCH_OFF) for side in ("left", "right")}
     banner, banner_until = "", 0.0
     failures = 0
     started = time.monotonic()
@@ -146,26 +147,39 @@ def main() -> int:
                     pose.landmarks, width, height, config.LANDMARK_VISIBILITY_THRESHOLD
                 )
                 renderer.draw_skeleton(view, points, SKELETON)
-            if pose_tracker.hands_enabled:
-                for side, hand in (smooth_fingers if use_filter else raw_fingers).items():
-                    if hand:
-                        color = renderer.SIDE_COLORS[side]
-                        points = geometry.display_points(hand, width, height, 0.0)
-                        renderer.draw_skeleton(view, points, HAND_SKELETON, color, color, 3)
+            fingers = {
+                side: geometry.display_points(hand, width, height, 0.0) if hand and pose_tracker.hands_enabled else None
+                for side, hand in (smooth_fingers if use_filter else raw_fingers).items()
+            }
+            pinches = {side: pinchers[side].update(points) for side, points in fingers.items()}
+            for side, points in fingers.items():
+                if points:
+                    color = renderer.SIDE_COLORS[side]
+                    renderer.draw_skeleton(view, points, HAND_SKELETON, color, color, 3)
+                    if pinches[side]:
+                        renderer.draw_pinch(view, pinches[side])
             left, right = (geometry.to_display(c, width, height) if c else None for c in circles.values())
             if show_scene:
                 if world is None:
                     world = scene.Scene(
                         width, height,
-                        ball_radius=config.BALL_RADIUS, hand_radius=config.HAND_CIRCLE_RADIUS,
+                        ball_radius=config.BALL_RADIUS,
                         friction=config.BALL_FRICTION, restitution=config.BALL_RESTITUTION,
                         max_speed=config.BALL_MAX_SPEED, max_dt=config.SCENE_MAX_DT_S, hand_still_s=config.HAND_STILL_S,
                         button_center=(width * config.BUTTON_X_FRAC, config.BUTTON_TOP_MARGIN), button_radius=config.BUTTON_RADIUS,
                         button_dwell_s=config.BUTTON_DWELL_S,
                     )
-                world.update({"left": left, "right": right}, time.monotonic())
+                colliders: dict[str, scene.Collider | None] = {
+                    "left": (left, config.HAND_CIRCLE_RADIUS) if left else None,
+                    "right": (right, config.HAND_CIRCLE_RADIUS) if right else None,
+                }
+                for side, points in fingers.items():
+                    for tip in HAND_FINGERTIPS:
+                        p = points[tip] if points else None
+                        colliders[f"{side}:tip{tip}"] = (p, config.FINGERTIP_RADIUS) if p else None
+                world.update(colliders, pinches, time.monotonic())
                 renderer.draw_button(view, world.button_center, config.BUTTON_RADIUS, world.button_progress, world.presses)
-                renderer.draw_ball(view, (world.ball.x, world.ball.y), config.BALL_RADIUS)
+                renderer.draw_ball(view, (world.ball.x, world.ball.y), config.BALL_RADIUS, held=world.held_by is not None)
             renderer.draw_hands(view, left, right, config.HAND_CIRCLE_RADIUS)
 
             now = time.monotonic()

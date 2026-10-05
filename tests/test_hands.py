@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from motion.contract import LEFT_WRIST, NUM_HAND_LANDMARKS, NUM_LANDMARKS, RIGHT_WRIST, HandsFrame, Landmark, PoseFrame
-from motion.geometry import assign_hands
+from motion.geometry import Pinch, assign_hands
 from motion.tracker import to_hands_frame
 
 
@@ -58,3 +58,21 @@ def test_to_hands_frame_marks_points_visible() -> None:
     assert frame.timestamp_ms == 9
     assert frame.hands[0][0] == Landmark(0.1, 0.2, 0.3, 1.0)
     assert to_hands_frame([], 9) == HandsFrame(9, ())
+
+
+def hand_points(thumb_index_gap: float) -> list:
+    """21 display points: palm size 100 px (wrist -> middle MCP), thumb and index tips gap px apart."""
+    pts = [(500, 500)] * 21
+    pts[0], pts[9] = (500, 500), (500, 400)
+    pts[4], pts[8] = (480, 350), (480 + thumb_index_gap, 350)
+    return pts
+
+
+def test_pinch_with_hysteresis() -> None:
+    p = Pinch(on_ratio=0.3, off_ratio=0.45)
+    assert p.update(hand_points(60)) is None              # open
+    assert p.update(hand_points(20)) == (490.0, 350.0)     # closed: midpoint of the tips
+    assert p.update(hand_points(40)) is not None           # between thresholds: stays closed
+    assert p.update(hand_points(50)) is None               # past off: opens
+    assert p.update(hand_points(40)) is None               # between thresholds: stays open
+    assert p.update(None) is None and not p.active         # hand lost

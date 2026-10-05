@@ -50,6 +50,10 @@ class HandsFrame:
 
 NUM_HAND_LANDMARKS = 21
 HAND_WRIST = 0
+HAND_THUMB_TIP = 4
+HAND_INDEX_TIP = 8
+HAND_MIDDLE_MCP = 9  # base of the middle finger; wrist -> here is the palm size
+HAND_FINGERTIPS = (4, 8, 12, 16, 20)
 
 HAND_SKELETON: tuple[tuple[int, int], ...] = (
     (0, 1), (1, 2), (2, 3), (3, 4),          # thumb

@@ -36,9 +36,14 @@ def draw_hands(frame: np.ndarray, left: Point | None, right: Point | None, radiu
             cv2.circle(frame, center, radius, color, 4, cv2.LINE_AA)
 
 
-def draw_ball(frame: np.ndarray, center: tuple[float, float], radius: int) -> None:
-    cv2.circle(frame, (round(center[0]), round(center[1])), radius, (0, 220, 255), -1, cv2.LINE_AA)
-    cv2.circle(frame, (round(center[0]), round(center[1])), radius, (0, 120, 160), 3, cv2.LINE_AA)
+def draw_ball(frame: np.ndarray, center: tuple[float, float], radius: int, held: bool = False) -> None:
+    c = (round(center[0]), round(center[1]))
+    cv2.circle(frame, c, radius, (0, 220, 255), -1, cv2.LINE_AA)
+    cv2.circle(frame, c, radius, (255, 255, 255) if held else (0, 120, 160), 5 if held else 3, cv2.LINE_AA)
+
+
+def draw_pinch(frame: np.ndarray, point: tuple[float, float]) -> None:
+    cv2.circle(frame, (round(point[0]), round(point[1])), 8, (255, 255, 255), -1, cv2.LINE_AA)
 
 
 def draw_button(frame: np.ndarray, center: tuple[float, float], radius: int, progress: float, presses: int) -> None:

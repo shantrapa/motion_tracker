@@ -13,7 +13,7 @@ This is a desktop prototype for studying motion-tracking mechanics. The pure-log
 - **Smoothing:** a [One Euro Filter](https://gery.casiez.net/1euro/) on every coordinate of the pose and the fingers. Steady at rest, no visible lag on fast moves.
 - **Metrics:** render FPS, tracking FPS and median latency, shown on screen and optionally logged to CSV.
 - **Video files:** the same pipeline over a recording, deterministic, for comparing settings on identical input.
-- **Scene:** the hand circles push a ball around; holding a raised hand on the button resets it.
+- **Scene:** hand circles and fingertips push a ball around; pinch it (thumb + index) to pick it up, open the fingers to throw it; holding a raised hand on the button resets it.
 - **Poses and actions:** hands up, arms out, lean left/right, squat (held poses), plus jump and punch (movements), shown on screen as they happen.
 
 ## Requirements
@@ -74,7 +74,7 @@ capture → tracker → smoothing → renderer
 | `contract.py` | `Landmark`, `PoseFrame`, `HandsFrame`, landmark indices, skeleton connections. No MediaPipe or OpenCV imports |
 | `geometry.py` | mirroring, pixel conversion, hand centers, lost-hand hold, matching hands to pose wrists |
 | `smoothing.py` | One Euro Filter |
-| `scene.py` | ball physics, hand pushes, dwell button |
+| `scene.py` | ball physics, pushes, pinch grab and throw, dwell button |
 | `poses.py` | pose classification, debouncing, jump and punch state machines |
 | `metrics.py` | FPS and latency over a time window |
 | `renderer.py` | all OpenCV drawing and the window |

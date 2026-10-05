@@ -44,6 +44,9 @@ BUTTON_RADIUS: int = 60
 BUTTON_TOP_MARGIN: int = 100     # button center distance from the top edge
 BUTTON_X_FRAC: float = 0.75      # button center across the width; clear of the overlay text on the left
 BUTTON_DWELL_S: float = 0.6      # hold a hand on the button this long to press it
+FINGERTIP_RADIUS: int = 12       # each fingertip pushes the ball like a small hand circle
+PINCH_ON: float = 0.3            # thumb-index tip gap below this x palm size = pinch (grab)
+PINCH_OFF: float = 0.45          # ...and above this = released (gap between them stops flicker)
 
 # Poses and actions (stage 8). Lengths are in shoulder widths, angles in degrees.
 POSE_HOLD_MS: int = 250          # a pose must hold this long to turn on (and be gone this long to turn off)

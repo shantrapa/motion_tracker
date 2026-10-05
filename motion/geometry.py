@@ -1,7 +1,8 @@
 import math
 
 from motion.contract import (
-    HAND_WRIST, LEFT_INDEX, LEFT_PINKY, LEFT_WRIST, RIGHT_INDEX, RIGHT_PINKY, RIGHT_WRIST,
+    HAND_INDEX_TIP, HAND_MIDDLE_MCP, HAND_THUMB_TIP, HAND_WRIST,
+    LEFT_INDEX, LEFT_PINKY, LEFT_WRIST, RIGHT_INDEX, RIGHT_PINKY, RIGHT_WRIST,
     HandsFrame, Landmark, PoseFrame,
 )
 
@@ -84,3 +85,28 @@ class HeldPoint:
         elif self._last is not None and now_ms - self._seen_ms > self.hold_ms:
             self._last = None
         return self._last
+
+
+class Pinch:
+    """Thumb tip and index tip together = pinching. Distances relative to palm size, so it works at any
+    distance from the camera; separate on/off thresholds so it does not flicker at the boundary."""
+
+    def __init__(self, on_ratio: float, off_ratio: float) -> None:
+        self.on_ratio = on_ratio
+        self.off_ratio = off_ratio
+        self.active = False
+
+    def update(self, points: list[Point | None] | None) -> tuple[float, float] | None:
+        """points: the 21 hand landmarks in display pixels (or None if no hand). Returns the pinch point."""
+        needed = (HAND_WRIST, HAND_MIDDLE_MCP, HAND_THUMB_TIP, HAND_INDEX_TIP)
+        if not points or any(points[i] is None for i in needed):
+            self.active = False
+            return None
+        palm = math.dist(points[HAND_WRIST], points[HAND_MIDDLE_MCP])
+        if palm < 1e-6:
+            self.active = False
+            return None
+        thumb, index = points[HAND_THUMB_TIP], points[HAND_INDEX_TIP]
+        ratio = math.dist(thumb, index) / palm
+        self.active = ratio < (self.off_ratio if self.active else self.on_ratio)
+        return ((thumb[0] + index[0]) / 2, (thumb[1] + index[1]) / 2) if self.active else None

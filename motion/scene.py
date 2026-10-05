@@ -1,9 +1,13 @@
-"""Interactive scene driven by the hand circles. Display pixel coordinates, y down. Pure Python."""
+"""Interactive scene driven by the hands. Display pixel coordinates, y down. Pure Python.
+
+Colliders (hand circles, fingertips) push the ball; a pinch inside the ball picks it up,
+releasing the pinch throws it with the hand's velocity."""
 
 import math
 from dataclasses import dataclass
 
 Vec = tuple[float, float]
+Collider = tuple[Vec, float]  # (center, radius)
 
 
 @dataclass
@@ -25,8 +29,12 @@ class _HandMotion:
         self.velocity: Vec = (0.0, 0.0)
 
     def update(self, pos: Vec | None, now_s: float) -> None:
-        if pos is None or self._pos is None:
-            # A hand that just (re)appeared has no history: zero velocity, so it cannot launch the ball.
+        if pos is None:
+            # Gone: keep the last velocity (a released pinch throws with it).
+            self._pos = None
+            return
+        if self._pos is None:
+            # Just (re)appeared, no history: zero velocity, so it cannot launch the ball.
             self.velocity = (0.0, 0.0)
             self._pos, self._t = pos, now_s
             return
@@ -40,7 +48,7 @@ class _HandMotion:
 
 
 class Scene:
-    """A ball the hands push around and a dwell button. Call update() once per rendered frame."""
+    """A ball the hands push, grab and throw, and a dwell button. Call update() once per rendered frame."""
 
     def __init__(
         self,
@@ -48,7 +56,6 @@ class Scene:
         height: int,
         *,
         ball_radius: float,
-        hand_radius: float,
         friction: float,        # 1/s, exponential velocity decay
         restitution: float,     # 0..1, bounciness of walls and hands
         max_speed: float,       # px/s
@@ -60,7 +67,6 @@ class Scene:
     ) -> None:
         self.width, self.height = width, height
         self.ball_radius = ball_radius
-        self.hand_radius = hand_radius
         self.friction = friction
         self.restitution = restitution
         self.max_speed = max_speed
@@ -71,26 +77,62 @@ class Scene:
         self.ball = Ball(width / 2, height / 2)
         self.presses = 0
         self.button_progress = 0.0  # 0..1 while a hand dwells on the button
-        self._motion = {side: _HandMotion(hand_still_s) for side in ("left", "right")}
+        self.held_by: str | None = None  # side whose pinch holds the ball
+        self._hand_still_s = hand_still_s
+        self._motion: dict[str, _HandMotion] = {}  # velocity of every collider and pinch, by name
         self._last_s: float | None = None
         self._dwell_s = 0.0
         self._latched = False
 
     def reset_ball(self) -> None:
         self.ball = Ball(self.width / 2, self.height / 2)
+        self.held_by = None
 
-    def update(self, hands: dict[str, Vec | None], now_s: float) -> list[str]:
-        """hands: side -> circle center in display pixels (or None). Returns events ("button")."""
+    def _velocity(self, name: str, pos: Vec | None, now_s: float) -> Vec:
+        motion = self._motion.setdefault(name, _HandMotion(self._hand_still_s))
+        motion.update(pos, now_s)
+        return motion.velocity
+
+    def update(
+        self, colliders: dict[str, Collider | None], pinches: dict[str, Vec | None], now_s: float,
+    ) -> list[str]:
+        """colliders: name -> (center, radius) or None; pinches: side -> pinch point or None (not pinching).
+        Returns events ("button")."""
         dt = 0.0 if self._last_s is None else min(max(now_s - self._last_s, 0.0), self.max_dt)
         self._last_s = now_s
-        for side, motion in self._motion.items():
-            motion.update(hands.get(side), now_s)
+        velocities = {name: self._velocity(name, c[0] if c else None, now_s) for name, c in colliders.items()}
+        pinch_v = {side: self._velocity(f"pinch:{side}", p, now_s) for side, p in pinches.items()}
 
-        self._move_ball(dt)
-        for side, pos in hands.items():
-            if pos is not None:
-                self._collide(pos, self._motion[side].velocity)
-        return self._update_button(hands, dt)
+        b = self.ball
+        if self.held_by is not None:
+            point = pinches.get(self.held_by)
+            if point is None:  # pinch opened: throw
+                b.vx, b.vy = self._cap(pinch_v.get(self.held_by, (0.0, 0.0)))
+                self.held_by = None
+            else:
+                b.x, b.y = self._inside(point)
+                b.vx, b.vy = self._cap(pinch_v[self.held_by])
+        if self.held_by is None:
+            for side, point in pinches.items():
+                if point is not None and math.hypot(point[0] - b.x, point[1] - b.y) <= self.ball_radius:
+                    self.held_by = side
+                    b.x, b.y = self._inside(point)
+                    b.vx = b.vy = 0.0
+                    break
+        if self.held_by is None:  # a held ball ignores collisions, or the holding hand would push it away
+            self._move_ball(dt)
+            for name, c in colliders.items():
+                if c is not None:
+                    self._collide(c[0], c[1], velocities[name])
+        return self._update_button([c[0] for c in colliders.values() if c is not None], dt)
+
+    def _cap(self, v: Vec) -> Vec:
+        speed = math.hypot(*v)
+        return v if speed <= self.max_speed else (v[0] * self.max_speed / speed, v[1] * self.max_speed / speed)
+
+    def _inside(self, p: Vec) -> Vec:
+        r = self.ball_radius
+        return min(max(p[0], r), self.width - r), min(max(p[1], r), self.height - r)
 
     def _move_ball(self, dt: float) -> None:
         b, r, e = self.ball, self.ball_radius, self.restitution
@@ -108,11 +150,11 @@ class Scene:
         elif b.y > self.height - r:
             b.y, b.vy = self.height - r, -abs(b.vy) * e
 
-    def _collide(self, hand: Vec, hand_v: Vec) -> None:
+    def _collide(self, hand: Vec, radius: float, hand_v: Vec) -> None:
         b = self.ball
         dx, dy = b.x - hand[0], b.y - hand[1]
         dist = math.hypot(dx, dy)
-        reach = self.ball_radius + self.hand_radius
+        reach = self.ball_radius + radius
         if dist >= reach:
             return
         nx, ny = (dx / dist, dy / dist) if dist > 1e-9 else (0.0, -1.0)
@@ -122,16 +164,12 @@ class Scene:
         if vn < 0:
             b.vx -= (1 + self.restitution) * vn * nx
             b.vy -= (1 + self.restitution) * vn * ny
-        speed = math.hypot(b.vx, b.vy)
-        if speed > self.max_speed:
-            b.vx, b.vy = b.vx * self.max_speed / speed, b.vy * self.max_speed / speed
-        # The push may have moved the ball into a wall.
-        b.x = min(max(b.x, self.ball_radius), self.width - self.ball_radius)
-        b.y = min(max(b.y, self.ball_radius), self.height - self.ball_radius)
+        b.vx, b.vy = self._cap((b.vx, b.vy))
+        b.x, b.y = self._inside((b.x, b.y))  # the push may have moved the ball into a wall
 
-    def _update_button(self, hands: dict[str, Vec | None], dt: float) -> list[str]:
+    def _update_button(self, points: list[Vec], dt: float) -> list[str]:
         cx, cy = self.button_center
-        hovered = any(p is not None and math.hypot(p[0] - cx, p[1] - cy) <= self.button_radius for p in hands.values())
+        hovered = any(math.hypot(p[0] - cx, p[1] - cy) <= self.button_radius for p in points)
         if not hovered:
             self._dwell_s, self._latched, self.button_progress = 0.0, False, 0.0
             return []
