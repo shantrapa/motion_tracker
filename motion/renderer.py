@@ -28,8 +28,9 @@ def draw_hands(frame: np.ndarray, left: Point | None, right: Point | None, radiu
             cv2.circle(frame, center, radius, color, 4, cv2.LINE_AA)
 
 
-def draw_fps(frame: np.ndarray, fps: float) -> None:
-    cv2.putText(frame, f"FPS {fps:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+def draw_overlay(frame: np.ndarray, lines: list[str]) -> None:
+    for i, line in enumerate(lines):
+        cv2.putText(frame, line, (10, 30 + 30 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
 
 def show(frame: np.ndarray) -> int:

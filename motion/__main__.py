@@ -2,6 +2,7 @@ import sys
 import time
 
 from motion import config
+from motion.contract import PoseFrame
 
 
 class FpsCounter:
@@ -28,7 +29,7 @@ class FpsCounter:
 
 def main() -> int:
     try:
-        from motion import capture, geometry, renderer, tracker
+        from motion import capture, geometry, renderer, smoothing, tracker
         from motion.contract import SKELETON
     except ModuleNotFoundError as e:
         print(f"error: missing dependency '{e.name}', run: python -m pip install mediapipe", file=sys.stderr)
@@ -55,8 +56,13 @@ def main() -> int:
     fps = FpsCounter(config.FPS_WINDOW_S)
     holds = {side: geometry.HeldPoint(config.LOST_HOLD_MS) for side in ("left", "right")}
     hands: dict[str, geometry.NormPoint | None] = {"left": None, "right": None}
-    last_pose_ms: int | None = None
+    smoother = smoothing.PoseSmoother(
+        config.ONE_EURO_MIN_CUTOFF, config.ONE_EURO_BETA, config.ONE_EURO_D_CUTOFF, config.FILTER_RESET_MS
+    )
+    raw: PoseFrame | None = None
+    smoothed: PoseFrame | None = None
     show_skeleton = True
+    use_filter = True
     failures = 0
     try:
         while True:
@@ -70,9 +76,13 @@ def main() -> int:
             failures = 0
             pose_tracker.send(frame, int(time.monotonic() * 1000))
 
-            pose = pose_tracker.latest()
-            if pose is not None and pose.timestamp_ms != last_pose_ms:
-                last_pose_ms = pose.timestamp_ms
+            latest = pose_tracker.latest()
+            is_new = latest is not None and (raw is None or latest.timestamp_ms != raw.timestamp_ms)
+            if is_new:
+                # Filter state stays warm even when display is unfiltered, so toggling 'f' never jumps.
+                raw, smoothed = latest, smoother(latest)
+            pose = smoothed if use_filter else raw
+            if is_new:
                 for side, hold in holds.items():
                     center = geometry.hand_center(
                         pose, side, config.HAND_CENTER, config.LANDMARK_VISIBILITY_THRESHOLD
@@ -86,13 +96,17 @@ def main() -> int:
                 renderer.draw_skeleton(view, points, SKELETON)
             left, right = (geometry.to_display(h, width, height) if h else None for h in hands.values())
             renderer.draw_hands(view, left, right, config.HAND_CIRCLE_RADIUS)
-            renderer.draw_fps(view, fps.tick(time.monotonic()))
+            renderer.draw_overlay(
+                view, [f"FPS {fps.tick(time.monotonic()):.1f}", f"filter {'on' if use_filter else 'off'} [f]"]
+            )
 
             key = renderer.show(view)
             if key in config.QUIT_KEYS or not renderer.is_open():
                 return 0
             if key == config.SKELETON_KEY:
                 show_skeleton = not show_skeleton
+            if key == config.FILTER_KEY:
+                use_filter = not use_filter
     except KeyboardInterrupt:
         return 0
     finally:
