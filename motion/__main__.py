@@ -53,6 +53,10 @@ def main() -> int:
         return 1
 
     fps = FpsCounter(config.FPS_WINDOW_S)
+    holds = {side: geometry.HeldPoint(config.LOST_HOLD_MS) for side in ("left", "right")}
+    hands: dict[str, geometry.NormPoint | None] = {"left": None, "right": None}
+    last_pose_ms: int | None = None
+    show_skeleton = True
     failures = 0
     try:
         while True:
@@ -66,16 +70,29 @@ def main() -> int:
             failures = 0
             pose_tracker.send(frame, int(time.monotonic() * 1000))
 
-            view = renderer.mirror(frame)
             pose = pose_tracker.latest()
-            if pose is not None:
-                height, width = view.shape[:2]
+            if pose is not None and pose.timestamp_ms != last_pose_ms:
+                last_pose_ms = pose.timestamp_ms
+                for side, hold in holds.items():
+                    center = geometry.hand_center(
+                        pose, side, config.HAND_CENTER, config.LANDMARK_VISIBILITY_THRESHOLD
+                    )
+                    hands[side] = hold.update(center, pose.timestamp_ms)
+
+            view = renderer.mirror(frame)
+            height, width = view.shape[:2]
+            if show_skeleton and pose is not None:
                 points = geometry.display_points(pose, width, height, config.LANDMARK_VISIBILITY_THRESHOLD)
                 renderer.draw_skeleton(view, points, SKELETON)
+            left, right = (geometry.to_display(h, width, height) if h else None for h in hands.values())
+            renderer.draw_hands(view, left, right, config.HAND_CIRCLE_RADIUS)
             renderer.draw_fps(view, fps.tick(time.monotonic()))
+
             key = renderer.show(view)
             if key in config.QUIT_KEYS or not renderer.is_open():
                 return 0
+            if key == config.SKELETON_KEY:
+                show_skeleton = not show_skeleton
     except KeyboardInterrupt:
         return 0
     finally:

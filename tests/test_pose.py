@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 
-from motion.contract import NUM_LANDMARKS, SKELETON, Landmark, PoseFrame
-from motion.geometry import display_points
+from motion.contract import (
+    LEFT_INDEX, LEFT_PINKY, LEFT_WRIST, NUM_LANDMARKS, RIGHT_WRIST, SKELETON, Landmark, PoseFrame,
+)
+from motion.geometry import HeldPoint, display_points, hand_center
 from motion.tracker import to_pose_frame
 
 
@@ -30,3 +32,35 @@ def test_display_points_without_person_is_empty() -> None:
 
 def test_skeleton_indices_in_range() -> None:
     assert all(0 <= i < NUM_LANDMARKS for pair in SKELETON for i in pair)
+
+
+def pose_with(points: dict[int, Landmark]) -> PoseFrame:
+    hidden = Landmark(0.5, 0.5, 0.0, 0.0)
+    return PoseFrame(0, tuple(points.get(i, hidden) for i in range(NUM_LANDMARKS)))
+
+
+def test_hand_center_wrist_and_palm() -> None:
+    pose = pose_with({
+        LEFT_WRIST: Landmark(0.3, 0.6, 0.0, 0.9),
+        LEFT_INDEX: Landmark(0.6, 0.6, 0.0, 0.9),
+        LEFT_PINKY: Landmark(0.3, 0.9, 0.0, 0.9),
+    })
+    assert hand_center(pose, "left", "wrist", 0.5) == (0.3, 0.6)
+    x, y = hand_center(pose, "left", "palm", 0.5)
+    assert abs(x - 0.4) < 1e-9 and abs(y - 0.7) < 1e-9
+
+
+def test_hand_center_lost_when_invisible_or_off_frame() -> None:
+    assert hand_center(pose_with({}), "right", "wrist", 0.5) is None
+    off = pose_with({RIGHT_WRIST: Landmark(0.5, 1.2, 0.0, 0.9)})
+    assert hand_center(off, "right", "wrist", 0.5) is None
+    assert hand_center(PoseFrame(0, None), "right", "wrist", 0.5) is None
+
+
+def test_held_point_holds_then_drops() -> None:
+    held = HeldPoint(hold_ms=200)
+    assert held.update((0.1, 0.2), 1000) == (0.1, 0.2)
+    assert held.update(None, 1200) == (0.1, 0.2)   # still within hold
+    assert held.update(None, 1201) is None          # expired
+    assert held.update(None, 1300) is None
+    assert held.update((0.5, 0.5), 1400) == (0.5, 0.5)

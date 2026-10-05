@@ -9,6 +9,7 @@ MAX_READ_FAILURES: int = 30  # consecutive failed reads before giving up
 # Window
 WINDOW_NAME: str = "motion"
 QUIT_KEYS: tuple[int, ...] = (ord("q"), 27)  # q, Esc
+SKELETON_KEY: int = ord("s")
 
 # Metrics
 FPS_WINDOW_S: float = 1.0
@@ -18,6 +19,11 @@ POSE_DETECTION_CONFIDENCE: float = 0.5
 POSE_PRESENCE_CONFIDENCE: float = 0.5
 TRACKING_CONFIDENCE: float = 0.5
 LANDMARK_VISIBILITY_THRESHOLD: float = 0.5
+
+# Hand circles
+HAND_CENTER: str = "wrist"  # wrist | palm (mean of wrist, index, pinky)
+LOST_HOLD_MS: int = 200     # keep a lost circle in place this long, then hide it
+HAND_CIRCLE_RADIUS: int = 40
 
 # Model
 MODEL_VARIANT: str = "full"  # lite | full | heavy

@@ -18,6 +18,16 @@ def draw_skeleton(frame: np.ndarray, points: list[Point | None], connections: tu
             cv2.circle(frame, p, 4, (0, 200, 255), -1, cv2.LINE_AA)
 
 
+LEFT_HAND_COLOR = (255, 128, 0)   # BGR blue: person's left hand
+RIGHT_HAND_COLOR = (60, 60, 255)  # BGR red: person's right hand
+
+
+def draw_hands(frame: np.ndarray, left: Point | None, right: Point | None, radius: int) -> None:
+    for center, color in ((left, LEFT_HAND_COLOR), (right, RIGHT_HAND_COLOR)):
+        if center:
+            cv2.circle(frame, center, radius, color, 4, cv2.LINE_AA)
+
+
 def draw_fps(frame: np.ndarray, fps: float) -> None:
     cv2.putText(frame, f"FPS {fps:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
