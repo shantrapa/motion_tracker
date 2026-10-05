@@ -15,6 +15,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log", type=Path, metavar="CSV", help="write metrics once per second")
     parser.add_argument("--input", type=Path, metavar="VIDEO", help="process a video file instead of the camera")
     parser.add_argument("--no-hands", action="store_true", help="do not load the finger (hand) model")
+    parser.add_argument("--scene", action="store_true", help="start with the interactive scene on (toggle: g)")
     return parser.parse_args()
 
 
@@ -25,7 +26,7 @@ def fmt(value: float | None, spec: str, missing: str) -> str:
 def main() -> int:
     args = parse_args()
     try:
-        from motion import capture, geometry, renderer, smoothing, tracker
+        from motion import capture, geometry, renderer, scene, smoothing, tracker
         from motion.contract import HAND_SKELETON, NUM_HAND_LANDMARKS, SKELETON
     except ModuleNotFoundError as e:
         print(f"error: missing dependency '{e.name}', run: python -m pip install mediapipe", file=sys.stderr)
@@ -83,6 +84,8 @@ def main() -> int:
     smooth_fingers: dict[str, geometry.Hand | None] = {"left": None, "right": None}
     show_skeleton = True
     use_filter = True
+    world: scene.Scene | None = None  # created on the first frame, when the frame size is known
+    show_scene = args.scene
     failures = 0
     started = time.monotonic()
 
@@ -144,6 +147,19 @@ def main() -> int:
                         points = geometry.display_points(hand, width, height, 0.0)
                         renderer.draw_skeleton(view, points, HAND_SKELETON, color, color, 3)
             left, right = (geometry.to_display(c, width, height) if c else None for c in circles.values())
+            if show_scene:
+                if world is None:
+                    world = scene.Scene(
+                        width, height,
+                        ball_radius=config.BALL_RADIUS, hand_radius=config.HAND_CIRCLE_RADIUS,
+                        friction=config.BALL_FRICTION, restitution=config.BALL_RESTITUTION,
+                        max_speed=config.BALL_MAX_SPEED, max_dt=config.SCENE_MAX_DT_S, hand_still_s=config.HAND_STILL_S,
+                        button_center=(width * config.BUTTON_X_FRAC, config.BUTTON_TOP_MARGIN), button_radius=config.BUTTON_RADIUS,
+                        button_dwell_s=config.BUTTON_DWELL_S,
+                    )
+                world.update({"left": left, "right": right}, time.monotonic())
+                renderer.draw_button(view, world.button_center, config.BUTTON_RADIUS, world.button_progress, world.presses)
+                renderer.draw_ball(view, (world.ball.x, world.ball.y), config.BALL_RADIUS)
             renderer.draw_hands(view, left, right, config.HAND_CIRCLE_RADIUS)
 
             now = time.monotonic()
@@ -163,7 +179,7 @@ def main() -> int:
                 f"render {metrics.render_fps:.1f} fps",
                 f"pose {metrics.tracking_fps:.1f} fps, {fmt(metrics.latency_ms, '.0f', '-')} ms",
                 f"hands {hands_text} [h]",
-                f"model {args.model} | filter {'on' if use_filter else 'off'} [f]",
+                f"model {args.model} | filter {'on' if use_filter else 'off'} [f] | scene {'on' if show_scene else 'off'} [g]",
             ])
 
             wait_ms = 1
@@ -176,6 +192,10 @@ def main() -> int:
                 show_skeleton = not show_skeleton
             if key == config.FILTER_KEY:
                 use_filter = not use_filter
+            if key == config.SCENE_KEY:
+                show_scene = not show_scene
+                if world is not None:
+                    world.reset_ball()
             if key == config.HANDS_KEY and not args.no_hands:
                 pose_tracker.hands_enabled = not pose_tracker.hands_enabled
     except KeyboardInterrupt:

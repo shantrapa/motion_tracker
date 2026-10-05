@@ -12,6 +12,7 @@ QUIT_KEYS: tuple[int, ...] = (ord("q"), 27)  # q, Esc
 SKELETON_KEY: int = ord("s")
 FILTER_KEY: int = ord("f")
 HANDS_KEY: int = ord("h")
+SCENE_KEY: int = ord("g")
 
 # Metrics
 METRICS_WINDOW_S: float = 1.0  # fps and median latency are computed over this window
@@ -31,6 +32,18 @@ HAND_TRACKING_CONFIDENCE: float = 0.5
 HAND_CENTER: str = "wrist"  # wrist | palm (mean of wrist, index, pinky)
 LOST_HOLD_MS: int = 200     # keep a lost circle in place this long, then hide it
 HAND_CIRCLE_RADIUS: int = 40
+
+# Scene (stage 7), display pixels
+BALL_RADIUS: int = 50
+BALL_FRICTION: float = 1.2       # 1/s; higher = ball stops sooner
+BALL_RESTITUTION: float = 0.6    # 0..1 bounciness of walls and hands
+BALL_MAX_SPEED: float = 2500.0   # px/s
+SCENE_MAX_DT_S: float = 0.05     # longer frames are clamped so the ball cannot tunnel through a hand
+HAND_STILL_S: float = 0.15       # no hand movement this long -> hand velocity counts as zero
+BUTTON_RADIUS: int = 60
+BUTTON_TOP_MARGIN: int = 100     # button center distance from the top edge
+BUTTON_X_FRAC: float = 0.75      # button center across the width; clear of the overlay text on the left
+BUTTON_DWELL_S: float = 0.6      # hold a hand on the button this long to press it
 
 # Smoothing (One Euro Filter on normalized coords)
 # Tune by eye: jitter at rest -> lower MIN_CUTOFF; lag on fast moves -> raise BETA.
