@@ -17,14 +17,19 @@ def iso(lm: Landmark, aspect: float) -> Vec2:
     return lm.x * aspect, lm.y
 
 
-def angle(a: Vec2, b: Vec2, c: Vec2) -> float:
-    """Angle ABC in degrees (spec §52): shoulder-elbow-wrist, hip-knee-ankle, ..."""
-    ux, uy = a[0] - b[0], a[1] - b[1]
-    vx, vy = c[0] - b[0], c[1] - b[1]
-    norm = math.hypot(ux, uy) * math.hypot(vx, vy)
+def iso3(lm: Landmark, aspect: float) -> tuple[float, float, float]:
+    """iso() with depth: MediaPipe's z is on the same scale as x."""
+    return lm.x * aspect, lm.y, lm.z * aspect
+
+
+def angle(a: tuple[float, ...], b: tuple[float, ...], c: tuple[float, ...]) -> float:
+    """Angle ABC in degrees, 2-D or 3-D (spec §52): shoulder-elbow-wrist, hip-knee-ankle, ..."""
+    u = [p - q for p, q in zip(a, b)]
+    v = [p - q for p, q in zip(c, b)]
+    norm = math.hypot(*u) * math.hypot(*v)
     if norm < 1e-12:
         return 180.0
-    return math.degrees(math.acos(max(-1.0, min(1.0, (ux * vx + uy * vy) / norm))))
+    return math.degrees(math.acos(max(-1.0, min(1.0, sum(x * y for x, y in zip(u, v)) / norm))))
 
 _HAND_POINTS: dict[str, dict[str, tuple[int, ...]]] = {
     "left": {"wrist": (LEFT_WRIST,), "palm": (LEFT_WRIST, LEFT_INDEX, LEFT_PINKY)},

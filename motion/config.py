@@ -67,6 +67,7 @@ PUNCH_Y_TOL: float = 0.6         # wrist within this of shoulder height (raising
 PUNCH_COOLDOWN_MS: int = 400     # one punch per arm per this period
 PUNCH_WINDOW_MS: int = 300       # the arm must have been bent within this time before the punch...
 PUNCH_BENT_DEG: float = 100.0    # ...meaning elbow angle (2-D) below this; raising a straight arm never is
+PUNCH_STRAIGHT_DEG: float = 150.0  # and at the hit the arm is straight: elbow angle (3-D) above this
 PUNCH_MAX_RISE: float = 0.6      # wrist vertical travel since it was bent; a raise travels a whole arm length
 JUMP_COOLDOWN_MS: int = 500      # one jump per this period
 EVENT_SHOW_S: float = 1.0        # how long an event banner stays on screen

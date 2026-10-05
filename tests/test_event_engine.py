@@ -1,4 +1,4 @@
-from motion.contract import LEFT_WRIST, RIGHT_ELBOW, RIGHT_WRIST, PoseFrame
+from motion.contract import LEFT_ELBOW, LEFT_WRIST, RIGHT_ELBOW, RIGHT_WRIST, PoseFrame
 from motion.event_engine import Cooldown, Debounce, GestureEngine
 from motion.events import EventType, State
 
@@ -66,9 +66,14 @@ def test_repeated_squats_are_not_jumps() -> None:
     assert EventType.JUMP not in run(frames_dy([0.0] * 30 + rep * 3))
 
 
+def elbow_drop(ext: float) -> float:
+    """How far below the shoulder line the elbow hangs: bent arm (short) -> elbow low, straight -> on the line."""
+    return 0.12 * max(0.0, 1.1 - ext)
+
+
 def test_punch_vs_slow_reach() -> None:
-    def arm(ext: float) -> dict:  # right arm pointing sideways at shoulder height
-        return {RIGHT_WRIST: (0.4 - 0.2 * ext, 0.3)}
+    def arm(ext: float) -> dict:  # right arm pointing sideways at shoulder height, `ext` shoulder widths long
+        return {RIGHT_WRIST: (0.4 - 0.2 * ext, 0.3), RIGHT_ELBOW: (0.4 - 0.1 * ext, 0.3 + elbow_drop(ext))}
 
     fast = [pose(arm(0.4), t=i * 33) for i in range(10)]
     fast += [pose(arm(e), t=330 + i * 33) for i, e in enumerate((0.7, 1.0, 1.25, 1.25))]
@@ -80,7 +85,7 @@ def test_punch_vs_slow_reach() -> None:
 
 def test_punch_cooldown() -> None:
     def arm(ext: float) -> dict:
-        return {LEFT_WRIST: (0.6 + 0.2 * ext, 0.3)}
+        return {LEFT_WRIST: (0.6 + 0.2 * ext, 0.3), LEFT_ELBOW: (0.6 + 0.1 * ext, 0.3 + elbow_drop(ext))}
 
     exts = [0.4] * 5 + [0.8, 1.25, 0.6, 1.25] + [1.25] * 3  # second punch 66 ms after the first
     assert run([pose(arm(e), t=i * 33) for i, e in enumerate(exts)]) == [EventType.LEFT_PUNCH]
@@ -109,4 +114,17 @@ def test_raising_a_straight_arm_is_not_a_punch() -> None:
         z = -2 * 0.25 * math.sin(theta)                 # depth exaggerated 2x
         elbow = (0.4, (0.3 + y) / 2, z / 2)               # straight arm: elbow halfway
         frames.append(pose({RIGHT_WRIST: (0.4, y, z), RIGHT_ELBOW: elbow}, t=i * 33))
+    assert run(frames, only={EventType.LEFT_PUNCH, EventType.RIGHT_PUNCH}) == []
+
+
+def test_holding_a_bent_arm_up_with_depth_jitter_is_not_a_punch() -> None:
+    # Reported on the live camera: a hand held up near the face (peace / OK sign) kept firing RIGHT_PUNCH
+    # every cooldown. The elbow is bent the whole time and MediaPipe's wrist depth jitters a lot close up,
+    # so the 3-D shoulder-wrist distance kept "growing fast". Close up, the hand is well in front of the body (z < 0).
+    import random
+    rng = random.Random(0)
+    frames = [
+        pose({RIGHT_ELBOW: (0.3, 0.5), RIGHT_WRIST: (0.35, 0.25, -0.25 + rng.uniform(-0.08, 0.08))}, t=i * 33)
+        for i in range(90)
+    ]
     assert run(frames, only={EventType.LEFT_PUNCH, EventType.RIGHT_PUNCH}) == []

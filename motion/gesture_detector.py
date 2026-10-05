@@ -6,16 +6,20 @@ import math
 
 from motion import config
 from motion.contract import Landmark
-from motion.geometry import Vec2, angle, iso
+from motion.geometry import Vec2, angle, iso, iso3
 from motion.motion_history import MotionHistory
 
 
 class PunchDetector:
-    """A bent arm straightening fast at shoulder height (spec §22: speed, elbow, arm length, direction).
-    Arm length is the 3-D shoulder-wrist distance, so punches toward the camera count. But MediaPipe exaggerates
-    wrist depth, and a fast forward raise of a straight arm then looks like a growing arm too. Two checks rule
-    that out: the elbow must have been bent shortly before (a straight arm never is), and the wrist must not
-    have travelled far vertically since. Fires on every qualifying frame; the engine's cooldown dedups."""
+    """Wind-up, extend, hit (spec §22, §57): a bent arm straightening fast at shoulder height.
+    Arm length is the 3-D shoulder-wrist distance, so punches toward the camera count. But MediaPipe's wrist
+    depth is exaggerated and jittery, so "the arm got longer fast" alone fires on a fast forward raise and on
+    a bent hand simply held up close to the camera. Hence:
+    - the elbow was bent shortly before (a raised straight arm never is),
+    - the arm is straight at the hit (a hand held up near the face never is; checked in 3-D, because scaling
+      depth cannot make bent points line up),
+    - the wrist stayed roughly level since the wind-up (a raise travels a whole arm length up).
+    Fires on every qualifying frame; the engine's cooldown dedups."""
 
     def __init__(self) -> None:
         self.reset()
@@ -32,10 +36,13 @@ class PunchDetector:
             (shoulder.x * aspect, shoulder.y, shoulder.z * aspect), (wrist.x * aspect, wrist.y, wrist.z * aspect)
         ) / unit
         prev, self._prev = self._prev, (ext, now_ms)
-        if elbow is not None:
-            if angle(iso(shoulder, aspect), iso(elbow, aspect), iso(wrist, aspect)) < config.PUNCH_BENT_DEG:
-                self._bent = (now_ms, wrist.y)
-        if prev is None or now_ms <= prev[1] or self._bent is None:
+        if elbow is None:
+            return False  # cannot tell bent from straight
+        if angle(iso(shoulder, aspect), iso(elbow, aspect), iso(wrist, aspect)) < config.PUNCH_BENT_DEG:
+            self._bent = (now_ms, wrist.y)
+        elbow_3d = angle(iso3(shoulder, aspect), iso3(elbow, aspect), iso3(wrist, aspect))
+        straight = elbow_3d > config.PUNCH_STRAIGHT_DEG
+        if prev is None or now_ms <= prev[1] or self._bent is None or not straight:
             return False
         bent_ms, bent_y = self._bent
         was_bent = now_ms - bent_ms <= config.PUNCH_WINDOW_MS
