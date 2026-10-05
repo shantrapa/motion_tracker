@@ -13,7 +13,7 @@
 - Сервер, сеть, передача видео куда-либо: всё считается локально.
 - Распознавание жестов (Gesture Recognizer). Пальцы (Hand Landmarker) — только в рамках этапа 6.
 - GUI-фреймворки (Qt, Tkinter, pygame): окно только средствами OpenCV.
-- Код под Android и iOS.
+- Код под iOS. Android — только по разделу «Android» ниже.
 
 ## Стек
 
@@ -182,6 +182,61 @@ pytest
 
 macOS и Linux: `python3.11 -m venv .venv && source .venv/bin/activate`, остальное без изменений.
 
-## После прототипа
+## Android
 
-Android-версия: тот же контракт `PoseFrame`, CameraX вместо `capture.py`, MediaPipe Tasks для Android вместо `tracker.py`; `geometry` и `smoothing` переносятся с сохранением параметров, подобранных здесь.
+Тот же инструмент нативным приложением: Kotlin + CameraX + MediaPipe Tasks for Android. Код в `android/` этого репозитория. Python-прототип остаётся эталоном поведения: `contract`, `geometry`, `smoothing`, `metrics` переносятся почти дословно, с теми же параметрами и теми же тестами.
+
+### Стек и тулчейн
+- Тулчейн в `D:\claudendroid-tools`: JDK 17, Gradle 8.10.2, Android SDK (platform 35, build-tools 35), эмулятор.
+- AGP 8.7.3, Gradle wrapper 8.10.2, Kotlin 2.0.21, compileSdk/targetSdk 35, minSdk 24 (минимум MediaPipe).
+- `com.google.mediapipe:tasks-vision:1.0.0`, CameraX 1.5.3 (1.6 требует compileSdk 36).
+- UI на Views (PreviewView + свой OverlayView), без Compose. Только портретная ориентация.
+- Package: `io.github.shantrapa.motion`.
+
+### Структура
+```
+android/
+  settings.gradle.kts, build.gradle.kts, gradlew
+  app/src/main/java/io/github/shantrapa/motion/
+    MainActivity.kt   # CameraX, разрешения, главный цикл, переключатели (аналог __main__ + capture)
+    Config.kt         # все параметры
+    Contract.kt       # Landmark, PoseFrame, HandsFrame, индексы, связи
+    Geometry.kt       # зеркало, пересчёт в координаты View, центры рук, удержание, сопоставление кистей
+    Smoothing.kt      # One Euro Filter
+    Metrics.kt        # FPS и задержка
+    Tracker.kt        # MediaPipe Pose/Hand Landmarker → контракт
+    OverlayView.kt    # всё рисование (аналог renderer)
+  app/src/test/...    # JUnit, те же случаи, что в tests/*.py
+  app/src/main/assets/  # модели .task, качаются Gradle-задачей, в .gitignore
+```
+
+### Правила
+- `com.google.mediapipe` импортируется только в `Tracker.kt`; рисование только в `OverlayView.kt`; CameraX только в `MainActivity.kt`.
+- `Config`, `Contract`, `Geometry`, `Smoothing`, `Metrics` — чистый Kotlin без `android.*`, тестируются на JVM.
+- Фронтальная камера. Инференс на незеркальном кадре с учётом поворота сенсора; зеркало и пересчёт в координаты View (с учётом обрезки PreviewView `FILL_CENTER`) только в `Geometry`.
+- `ImageAnalysis` со стратегией `KEEP_ONLY_LATEST`, формат RGBA_8888: очереди кадров нет.
+- `LIVE_STREAM`, callback только конвертирует и сохраняет под lock; отрисовка по `invalidate()` в UI-потоке.
+- Метка времени кадра — `SystemClock.uptimeMillis()` при входе в анализатор, строго возрастает.
+- Расчёт на GPU (delegate) с откатом на CPU; выбор в `Config`.
+- Клавиши ПК заменяются экранными переключателями: скелет (`s`), фильтр (`f`), пальцы (`h`).
+- Модели в git не коммитятся, Gradle-задача качает их в `assets` перед сборкой.
+
+### Установка и проверка
+- Телефон по USB с включённой отладкой; `gradlew installDebug` или `adb install -r app-debug.apk`.
+- Экран проверяется через `adb exec-out screencap -p`: Claude видит результат сам, финальная проверка всё равно за мной.
+- Если камера занята другим приложением, FPS падает до единиц — сначала проверить это.
+
+### Этапы Android
+Порядок и правило подтверждения те же, что для ПК.
+
+**A0. Каркас.** Gradle-проект с wrapper, запрос разрешения камеры, полноэкранный зеркальный превью фронтальной камеры, FPS анализатора поверх. **Готово, когда:** `gradlew assembleDebug` собирает APK, он ставится через adb; приложение просит доступ к камере, показывает зеркальное видео и FPS; отказ в доступе даёт понятное сообщение без падения; при сворачивании камера освобождается.
+
+**A1. Скелет.** `Tracker.kt` с PoseLandmarker, перевод в `PoseFrame`, `Geometry` (зеркало, обрезка превью), отрисовка точек и связей. **Готово, когда:** скелет совпадает с телом; поднятая правая рука поднимается с той же стороны экрана, как в зеркале; без человека скелета нет и нет падений.
+
+**A2. Круги на руках.** Центр wrist/palm, порог `visibility`, удержание `LOST_HOLD_MS`, переключатель скелета. **Готово, когда:** как этап 2 на ПК; JUnit-тесты `Geometry` повторяют `tests/test_pose.py`.
+
+**A3. Сглаживание.** One Euro Filter с параметрами из Python (`1.0 / 9.0 / 1.0`), сброс после `FILTER_RESET_MS`, переключатель фильтра. **Готово, когда:** как этап 3 на ПК; JUnit-тесты повторяют `tests/test_smoothing.py`.
+
+**A4. Метрики.** FPS отрисовки, FPS трекинга, медиана задержки; выбор модели lite/full/heavy и CPU/GPU. **Готово, когда:** значения на экране; в README таблица замеров для этого телефона.
+
+**A5. Пальцы.** HandLandmarker, сопоставление с запястьями позы, сглаживание по стороне, переключатель. **Готово, когда:** как этап 6 на ПК; JUnit-тесты повторяют `tests/test_hands.py`.
