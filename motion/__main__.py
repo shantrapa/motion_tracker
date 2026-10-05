@@ -26,7 +26,7 @@ def fmt(value: float | None, spec: str, missing: str) -> str:
 def main() -> int:
     args = parse_args()
     try:
-        from motion import capture, geometry, renderer, scene, smoothing, tracker
+        from motion import capture, geometry, poses, renderer, scene, smoothing, tracker
         from motion.contract import HAND_SKELETON, NUM_HAND_LANDMARKS, SKELETON
     except ModuleNotFoundError as e:
         print(f"error: missing dependency '{e.name}', run: python -m pip install mediapipe", file=sys.stderr)
@@ -86,6 +86,8 @@ def main() -> int:
     use_filter = True
     world: scene.Scene | None = None  # created on the first frame, when the frame size is known
     show_scene = args.scene
+    recognizer = poses.ActionRecognizer()
+    banner, banner_until = "", 0.0
     failures = 0
     started = time.monotonic()
 
@@ -125,6 +127,10 @@ def main() -> int:
                 metrics.on_result(latency(latest.timestamp_ms))
                 # Filter state stays warm even when display is unfiltered, so toggling 'f' never jumps.
                 raw, smoothed = latest, smoother(latest)
+                # Always on the smoothed pose (independent of the 'f' toggle): fewer false triggers.
+                events = recognizer.update(smoothed, frame.shape[1] / frame.shape[0])
+                if events:
+                    banner, banner_until = " + ".join(e.replace("_", " ").upper() for e in events), time.monotonic() + config.EVENT_SHOW_S
             pose = smoothed if use_filter else raw
             if is_new:
                 for side, hold in holds.items():
@@ -180,7 +186,10 @@ def main() -> int:
                 f"pose {metrics.tracking_fps:.1f} fps, {fmt(metrics.latency_ms, '.0f', '-')} ms",
                 f"hands {hands_text} [h]",
                 f"model {args.model} | filter {'on' if use_filter else 'off'} [f] | scene {'on' if show_scene else 'off'} [g]",
+                f"poses: {', '.join(sorted(recognizer.active)) or '-'}",
             ])
+            if now < banner_until:
+                renderer.draw_banner(view, banner)
 
             wait_ms = 1
             if args.input:  # play no faster than real time; slower if inference can't keep up

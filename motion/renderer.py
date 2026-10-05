@@ -52,6 +52,16 @@ def draw_button(frame: np.ndarray, center: tuple[float, float], radius: int, pro
     cv2.putText(frame, label, (c[0] - tw // 2, c[1] + th // 2), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3, cv2.LINE_AA)
 
 
+def draw_banner(frame: np.ndarray, text: str) -> None:
+    """Big centered text near the bottom, for recognized events."""
+    font, scale, thick = cv2.FONT_HERSHEY_DUPLEX, 2.0, 4
+    (tw, th), _ = cv2.getTextSize(text, font, scale, thick)
+    h, w = frame.shape[:2]
+    org = ((w - tw) // 2, h - 60)
+    cv2.putText(frame, text, org, font, scale, (0, 0, 0), thick + 6, cv2.LINE_AA)
+    cv2.putText(frame, text, org, font, scale, (0, 255, 255), thick, cv2.LINE_AA)
+
+
 def draw_overlay(frame: np.ndarray, lines: list[str]) -> None:
     for i, line in enumerate(lines):
         cv2.putText(frame, line, (10, 30 + 30 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)

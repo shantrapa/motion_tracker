@@ -45,6 +45,24 @@ BUTTON_TOP_MARGIN: int = 100     # button center distance from the top edge
 BUTTON_X_FRAC: float = 0.75      # button center across the width; clear of the overlay text on the left
 BUTTON_DWELL_S: float = 0.6      # hold a hand on the button this long to press it
 
+# Poses and actions (stage 8). Lengths are in shoulder widths, angles in degrees.
+POSE_HOLD_MS: int = 250          # a pose must hold this long to turn on (and be gone this long to turn off)
+HANDS_UP_MARGIN: float = 0.3     # wrists this far above their shoulders
+ARMS_OUT_REACH: float = 1.0      # wrists this far out sideways from their shoulders
+ARMS_OUT_Y_TOL: float = 0.5      # ...and within this of shoulder height
+LEAN_DEG: float = 15.0           # torso (or shoulder line) tilt from vertical
+SQUAT_KNEE_DEG: float = 110.0    # both knee angles below this
+JUMP_RISE: float = 0.35          # shoulders above the standing baseline to count as airborne
+JUMP_SPEED: float = 2.5          # minimum upward speed at take-off, shoulder widths/s
+JUMP_LAND: float = 0.15          # back within this of the baseline = landed
+JUMP_MAX_AIR_MS: int = 1000      # longer "air time" is not a jump
+JUMP_BASELINE_TAU_S: float = 1.0 # how fast the standing baseline follows slow changes
+PUNCH_SPEED: float = 4.0         # arm straightening speed, shoulder widths/s
+PUNCH_MIN_EXT: float = 1.0       # shoulder-wrist distance at the end of the punch
+PUNCH_Y_TOL: float = 0.6         # wrist within this of shoulder height (raising arms is not a punch)
+PUNCH_COOLDOWN_MS: int = 400     # one punch per arm per this period
+EVENT_SHOW_S: float = 1.0        # how long an event banner stays on screen
+
 # Smoothing (One Euro Filter on normalized coords)
 # Tune by eye: jitter at rest -> lower MIN_CUTOFF; lag on fast moves -> raise BETA.
 ONE_EURO_MIN_CUTOFF: float = 1.0  # Hz

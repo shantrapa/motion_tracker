@@ -13,6 +13,8 @@ This is a desktop prototype for studying motion-tracking mechanics. The pure-log
 - **Smoothing:** a [One Euro Filter](https://gery.casiez.net/1euro/) on every coordinate of the pose and the fingers. Steady at rest, no visible lag on fast moves.
 - **Metrics:** render FPS, tracking FPS and median latency, shown on screen and optionally logged to CSV.
 - **Video files:** the same pipeline over a recording, deterministic, for comparing settings on identical input.
+- **Scene:** the hand circles push a ball around; holding a raised hand on the button resets it.
+- **Poses and actions:** hands up, arms out, lean left/right, squat (held poses), plus jump and punch (movements), shown on screen as they happen.
 
 ## Requirements
 
@@ -40,7 +42,7 @@ Models are downloaded into `models/` from Google's MediaPipe model storage and a
 ## Usage
 
 ```
-python -m motion [--model lite|full|heavy] [--input video.mp4] [--log metrics.csv] [--no-hands]
+python -m motion [--model lite|full|heavy] [--input video.mp4] [--log metrics.csv] [--no-hands] [--scene]
 ```
 
 | Option | Effect |
@@ -49,12 +51,14 @@ python -m motion [--model lite|full|heavy] [--input video.mp4] [--log metrics.cs
 | `--input` | process a video file instead of the camera, at real-time speed; exits at the end |
 | `--log` | write metrics to a CSV file once per second |
 | `--no-hands` | skip the finger model entirely |
+| `--scene` | start with the ball-and-button scene on |
 
 | Key | Action |
 |---|---|
 | `s` | skeleton on/off |
 | `f` | smoothing on/off (to compare raw vs filtered) |
 | `h` | fingers on/off (also pauses the hand model) |
+| `g` | scene on/off (ball and button) |
 | `q` / `Esc` | quit |
 
 ## How it works
@@ -70,6 +74,8 @@ capture → tracker → smoothing → renderer
 | `contract.py` | `Landmark`, `PoseFrame`, `HandsFrame`, landmark indices, skeleton connections. No MediaPipe or OpenCV imports |
 | `geometry.py` | mirroring, pixel conversion, hand centers, lost-hand hold, matching hands to pose wrists |
 | `smoothing.py` | One Euro Filter |
+| `scene.py` | ball physics, hand pushes, dwell button |
+| `poses.py` | pose classification, debouncing, jump and punch state machines |
 | `metrics.py` | FPS and latency over a time window |
 | `renderer.py` | all OpenCV drawing and the window |
 | `config.py` | every tunable number |
@@ -77,7 +83,7 @@ capture → tracker → smoothing → renderer
 - Inference runs on the raw, unmirrored frame, so left and right stay anatomically correct. Only the displayed image and the coordinates are mirrored.
 - MediaPipe drops frames itself when it is busy. There is no frame queue.
 - Callbacks only convert and store results. All drawing happens in the main loop.
-- `contract`, `geometry`, `smoothing` and `metrics` are plain Python with no dependencies: this is the part meant to be ported to Kotlin.
+- `contract`, `geometry`, `smoothing`, `metrics`, `scene` and `poses` are plain Python with no dependencies: this is the part meant to be ported to Kotlin.
 
 ## Tuning
 
