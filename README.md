@@ -17,7 +17,7 @@ This is a desktop prototype for studying motion-tracking mechanics. The pure-log
 - **Gestures and actions** (per [docs/MOTION_GESTURES_SPEC.md](docs/MOTION_GESTURES_SPEC.md)), shown on screen as they happen:
   - body: person detected/lost, each arm raised/lowered, both arms up, T-pose, lean left/right, squat + squat reps, jump + land;
   - arms: punch, swipe left/right/up/down, wave, clap, throw;
-  - hands: open palm, fist, point, pinch and grab (started / released / cancelled), push and pull.
+  - hands: open palm, fist, point, OK, peace, pinch and grab (started / released / cancelled), push and pull.
 
 ## Requirements
 

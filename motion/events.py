@@ -20,9 +20,13 @@ class State(Enum):
     LEFT_OPEN_PALM = auto()
     LEFT_FIST = auto()
     LEFT_POINT = auto()
+    LEFT_OK = auto()
+    LEFT_PEACE = auto()
     RIGHT_OPEN_PALM = auto()
     RIGHT_FIST = auto()
     RIGHT_POINT = auto()
+    RIGHT_OK = auto()
+    RIGHT_PEACE = auto()
     LEFT_PINCH = auto()   # lifecycle states: active between STARTED and RELEASED/CANCELLED, no debounce
     RIGHT_PINCH = auto()
     LEFT_GRAB = auto()
@@ -52,9 +56,13 @@ class EventType(Enum):
     LEFT_OPEN_PALM = auto()
     LEFT_FIST = auto()
     LEFT_POINT = auto()
+    LEFT_OK = auto()
+    LEFT_PEACE = auto()
     RIGHT_OPEN_PALM = auto()
     RIGHT_FIST = auto()
     RIGHT_POINT = auto()
+    RIGHT_OK = auto()
+    RIGHT_PEACE = auto()
     # pinch
     LEFT_PINCH_STARTED = auto()
     LEFT_PINCH_RELEASED = auto()
@@ -108,9 +116,13 @@ STATE_ENTERED: dict[State, EventType] = {
     State.LEFT_OPEN_PALM: EventType.LEFT_OPEN_PALM,
     State.LEFT_FIST: EventType.LEFT_FIST,
     State.LEFT_POINT: EventType.LEFT_POINT,
+    State.LEFT_OK: EventType.LEFT_OK,
+    State.LEFT_PEACE: EventType.LEFT_PEACE,
     State.RIGHT_OPEN_PALM: EventType.RIGHT_OPEN_PALM,
     State.RIGHT_FIST: EventType.RIGHT_FIST,
     State.RIGHT_POINT: EventType.RIGHT_POINT,
+    State.RIGHT_OK: EventType.RIGHT_OK,
+    State.RIGHT_PEACE: EventType.RIGHT_PEACE,
 }
 
 STATE_EXITED: dict[State, EventType] = {

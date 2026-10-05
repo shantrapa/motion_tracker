@@ -53,14 +53,24 @@ def finger_states(hand: Hand, aspect: float) -> dict[str, bool]:
 
 
 def hand_shape(hand: Hand, aspect: float) -> str | None:
-    """OPEN_PALM (four fingers out), FIST (all folded), POINT (index only) or None."""
+    """OK (thumb and index tips touch, the other three out), OPEN_PALM (four fingers out), FIST (all folded),
+    POINT (index only), PEACE (index and middle) or None. Spec §15."""
     f = finger_states(hand, aspect)
+    palm = palm_size(hand, aspect)
+    touching = palm > 1e-9 and (
+        math.dist(iso(hand[HAND_THUMB_TIP], aspect), iso(hand[HAND_INDEX_TIP], aspect)) / palm < config.PINCH_ON
+    )
+    # Before OPEN_PALM: a wide OK ring can leave the index looking extended.
+    if touching and f["middle"] and f["ring"] and f["pinky"]:
+        return "OK"
     if all(f.values()):
         return "OPEN_PALM"
     if not any(f.values()):
         return "FIST"
     if f["index"] and not (f["middle"] or f["ring"] or f["pinky"]):
         return "POINT"
+    if f["index"] and f["middle"] and not (f["ring"] or f["pinky"]):
+        return "PEACE"
     return None
 
 

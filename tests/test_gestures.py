@@ -42,7 +42,20 @@ def test_hand_shapes() -> None:
     assert hand_shape(make_hand(ALL), 1.0) == "OPEN_PALM"
     assert hand_shape(make_hand(set()), 1.0) == "FIST"
     assert hand_shape(make_hand({"index"}), 1.0) == "POINT"
-    assert hand_shape(make_hand({"index", "middle"}), 1.0) is None  # not an MVP shape
+    assert hand_shape(make_hand({"index", "middle"}), 1.0) == "PEACE"
+    assert hand_shape(make_hand({"index", "pinky"}), 1.0) is None  # rock sign: not supported
+
+
+def test_ok_sign() -> None:
+    ok = list(make_hand({"middle", "ring", "pinky"}))
+    ok[4] = Landmark(0.46, 0.6, 0.0, 1.0)  # thumb tip on the curled index tip: the ring
+    assert hand_shape(tuple(ok), 1.0) == "OK"
+    # A wide ring that leaves the index looking extended is still OK, not an open palm.
+    wide = list(make_hand(ALL))
+    wide[4] = Landmark(0.46, 0.38, 0.0, 1.0)
+    assert hand_shape(tuple(wide), 1.0) == "OK"
+    # The same three fingers out without the thumb touching: nothing.
+    assert hand_shape(make_hand({"middle", "ring", "pinky"}), 1.0) is None
 
 
 def test_shape_does_not_depend_on_hand_rotation() -> None:
