@@ -31,13 +31,11 @@ def draw_catch(frame: np.ndarray, game: CatchGame, player: PlayerState, now_s: f
         c = (round(ball.x), round(ball.y))
         cv2.circle(view, c, config.OBJECT_RADIUS, renderer.SIDE_COLORS[ball.side], -1, cv2.LINE_AA)
         cv2.circle(view, c, config.OBJECT_RADIUS, WHITE, 2, cv2.LINE_AA)
-    left, right = player.hands["left"], player.hands["right"]
-    renderer.draw_hands(
-        view,
-        (round(left[0]), round(left[1])) if left else None,
-        (round(right[0]), round(right[1])) if right else None,
-        config.HAND_RADIUS,
-    )
+    # The hands exactly as the game sees them: every bone that can catch.
+    for side, bones in player.hand_bones.items():
+        for a, b in bones or []:
+            pa, pb = (round(a[0]), round(a[1])), (round(b[0]), round(b[1]))
+            cv2.line(view, pa, pb, renderer.SIDE_COLORS[side], config.FINGER_RADIUS, cv2.LINE_AA)
 
     if game.phase == "playing":
         _text(view, f"SCORE {game.score}", (20, 45), 1.2)

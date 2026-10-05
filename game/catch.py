@@ -7,6 +7,16 @@ from dataclasses import dataclass
 from game import config
 
 Vec2 = tuple[float, float]
+Segment = tuple[Vec2, Vec2]
+
+
+def segment_distance(p: Vec2, seg: Segment) -> float:
+    """Distance from point p to the segment."""
+    (ax, ay), (bx, by) = seg
+    dx, dy = bx - ax, by - ay
+    length2 = dx * dx + dy * dy
+    t = 0.0 if length2 == 0 else max(0.0, min(1.0, ((p[0] - ax) * dx + (p[1] - ay) * dy) / length2))
+    return math.dist(p, (ax + t * dx, ay + t * dy))
 
 
 @dataclass
@@ -58,9 +68,10 @@ class CatchGame:
         self.balls.append(Ball(x, -config.OBJECT_RADIUS, config.START_SPEED, self.rng.choice(("left", "right"))))
         self._next_spawn = now_s + self.spawn_interval(now_s)
 
-    def update(self, hands: dict[str, Vec2 | None], now_s: float) -> list[str]:
-        """hands: side -> hand center in game coordinates (or None). Returns events:
-        "catch", "wrong_hand", "miss", "game_over"."""
+    def update(self, hands: dict[str, list[Segment] | None], now_s: float) -> list[str]:
+        """hands: side -> the hand's bones (fingers included) in game coordinates, or None.
+        A ball is touched when any bone comes within its radius plus a finger's thickness.
+        Returns events: "catch", "wrong_hand", "miss", "game_over"."""
         if self.phase != "playing":
             return []
         dt = min(max(now_s - (self._last_s or now_s), 0.0), config.MAX_DT_S)
@@ -69,13 +80,13 @@ class CatchGame:
             self._spawn(now_s)
 
         events: list[str] = []
-        reach = config.OBJECT_RADIUS + config.HAND_RADIUS
+        reach = config.OBJECT_RADIUS + config.FINGER_RADIUS
         for ball in list(self.balls):
             ball.vy += config.GRAVITY * dt
             ball.y += ball.vy * dt
             touching = {
-                side for side, p in hands.items()
-                if p is not None and math.dist(p, (ball.x, ball.y)) < reach
+                side for side, bones in hands.items()
+                if bones and min(segment_distance((ball.x, ball.y), seg) for seg in bones) < reach
             }
             if ball.side in touching:
                 self.balls.remove(ball)

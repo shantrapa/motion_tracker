@@ -75,7 +75,7 @@ Motion-controlled mini-games on top of the tracker, no keyboard: the camera is t
 python -m game [--model lite|full|heavy] [--input video.mp4]
 ```
 
-- **Catch** (G1): balls fall faster and faster; catch blue ones with your left hand and red ones with your right.
+- **Catch** (G1): balls fall from the top; catch blue ones with your left hand and red ones with your right. The whole hand catches, fingers included.
   Five in a row raise the score multiplier; a missed ball costs a life. Raise both hands to start and to play again.
 
 More modes are planned (fruit slicing, punching targets, dodging, "copy the pose", a rhythm game): see the

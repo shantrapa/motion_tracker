@@ -27,8 +27,8 @@ def main() -> int:
         return 1
 
     try:
-        # Catch needs only the body: skipping the hand model leaves more CPU and less latency.
-        pipeline = Pipeline(args.model, hands=False, video=args.input)
+        # The hand model gives whole hands (fingers too) to catch with.
+        pipeline = Pipeline(args.model, hands=True, video=args.input)
     except PipelineError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -48,11 +48,12 @@ def main() -> int:
             now = tick.frame_ms / 1000  # camera or video timeline: the game runs on capture time
 
             state = player.update(
-                tick.smoothed, tick.new_pose, {e.type for e in tick.events}, pipeline.engine.states, width, height,
+                tick.smoothed, tick.new_pose, tick.smooth_fingers, {e.type for e in tick.events},
+                pipeline.engine.states, width, height,
             )
             if EventType.BOTH_ARMS_RAISED in state.events and game.can_start(now):
                 game.start(now)
-            for event in game.update(state.hands, now):
+            for event in game.update(state.hand_bones, now):
                 if event in ("wrong_hand", "miss"):
                     banner, banner_until = event.replace("_", " ").upper(), time.monotonic() + 0.6
 
