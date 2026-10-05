@@ -10,15 +10,40 @@ import android.view.View
 /** All drawing on top of the camera preview. Set state from the UI thread, then invalidate(). */
 class OverlayView(context: Context) : View(context) {
     var lines: List<String> = emptyList()
+    var pose: PoseFrame? = null
+    var imageWidth = 0   // size of the upright frame the pose was computed on
+    var imageHeight = 0
+
+    private fun dp(value: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, resources.displayMetrics)
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.GREEN
         textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 14f, resources.displayMetrics)
         setShadowLayer(4f, 0f, 0f, Color.BLACK)
     }
+    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        strokeWidth = dp(2f)
+    }
+    private val pointPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(255, 200, 0) }
 
     override fun onDraw(canvas: Canvas) {
+        val landmarks = pose?.landmarks
+        if (landmarks != null && imageWidth > 0) {
+            val transform = ViewTransform(imageWidth, imageHeight, width, height)
+            drawSkeleton(canvas, displayPoints(landmarks, transform, Config.LANDMARK_VISIBILITY_THRESHOLD), SKELETON)
+        }
         val step = textPaint.textSize * 1.3f
-        lines.forEachIndexed { i, line -> canvas.drawText(line, 24f, 48f + step * (i + 1), textPaint) }
+        lines.forEachIndexed { i, line -> canvas.drawText(line, dp(12f), dp(24f) + step * (i + 1), textPaint) }
+    }
+
+    private fun drawSkeleton(canvas: Canvas, points: List<ViewPoint?>, connections: List<Pair<Int, Int>>) {
+        for ((a, b) in connections) {
+            val p = points.getOrNull(a) ?: continue
+            val q = points.getOrNull(b) ?: continue
+            canvas.drawLine(p.x, p.y, q.x, q.y, linePaint)
+        }
+        val radius = dp(4f)
+        for (p in points) if (p != null) canvas.drawCircle(p.x, p.y, radius, pointPaint)
     }
 }
