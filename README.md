@@ -73,11 +73,14 @@ python -m motion [--model lite|full|heavy] [--input video.mp4] [--log metrics.cs
 Motion-controlled mini-games on top of the tracker, no keyboard: the camera is the controller.
 
 ```
-python -m game [--model lite|full|heavy] [--input video.mp4]
+python -m game [--mode catch|mimic] [--model lite|full|heavy] [--input video.mp4]
 ```
 
 - **Catch** (G1): balls fall from the top; catch blue ones with your left hand and red ones with your right. The whole hand catches, fingers included.
   Five in a row raise the score multiplier; a missed ball costs a life. Hold a hand on START (or raise both arms) to play.
+
+- **Meme Mimic** (`--mode mimic`): a meme picture appears; strike the same pose and hold it before time runs out.
+  Every match makes the next round shorter; a round that runs out costs a life. Needs the pictures in `memes/`.
 
 More modes are planned (fruit slicing, punching targets, dodging, "copy the pose", a rhythm game): see the
 "Мини-игры" section in [CLAUDE.md](CLAUDE.md). Game logic is plain Python that only sees a `PlayerState`

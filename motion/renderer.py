@@ -89,8 +89,9 @@ def load_memes(folder: Path, files: dict[str, str]) -> dict[str, np.ndarray]:
     return images
 
 
-def draw_meme(frame: np.ndarray, image: np.ndarray, box: tuple[int, int], margin: int) -> None:
-    """The picture in the top-right corner, fitted into box (w, h) with its aspect ratio kept."""
+def draw_meme(frame: np.ndarray, image: np.ndarray, box: tuple[int, int], margin: int) -> tuple[int, int, int, int]:
+    """The picture in the top-right corner, fitted into box (w, h) with its aspect ratio kept.
+    Returns where it went: (x, y, w, h)."""
     h, w = image.shape[:2]
     scale = min(box[0] / w, box[1] / h)
     fitted = cv2.resize(image, (max(1, round(w * scale)), max(1, round(h * scale))), interpolation=cv2.INTER_AREA)
@@ -98,6 +99,7 @@ def draw_meme(frame: np.ndarray, image: np.ndarray, box: tuple[int, int], margin
     x, y = frame.shape[1] - margin - fw, margin
     frame[y:y + fh, x:x + fw] = fitted
     cv2.rectangle(frame, (x - 2, y - 2), (x + fw + 1, y + fh + 1), (255, 255, 255), 3)
+    return x, y, fw, fh
 
 
 def draw_overlay(frame: np.ndarray, lines: list[str]) -> None:

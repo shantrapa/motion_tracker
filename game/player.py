@@ -9,6 +9,7 @@ from motion.contract import (
     HAND_SKELETON, LEFT_INDEX, LEFT_PINKY, LEFT_WRIST, NOSE, RIGHT_INDEX, RIGHT_PINKY, RIGHT_WRIST, PoseFrame,
 )
 from motion.events import EventType, State
+from motion.meme_poses import detect_meme_pose
 
 Vec2 = tuple[float, float]
 Segment = tuple[Vec2, Vec2]
@@ -29,6 +30,7 @@ class PlayerState:
     head: Vec2 | None
     events: frozenset[EventType]                 # what just happened this frame
     states: frozenset[State]                     # what holds right now
+    meme: str | None = None                      # the meme pose recognized this frame (motion.meme_poses)
 
 
 def pose_hand_bones(pose: PoseFrame, side: str, min_visibility: float) -> list[tuple[geometry.NormPoint, geometry.NormPoint]]:
@@ -87,4 +89,5 @@ class Player:
             head=head,
             events=frozenset(events),
             states=frozenset(states),
+            meme=detect_meme_pose(pose, fingers, width / height),
         )

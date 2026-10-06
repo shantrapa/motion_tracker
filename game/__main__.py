@@ -10,6 +10,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="python -m game", description="Motion-controlled mini-games.")
     parser.add_argument("--model", choices=("lite", "full", "heavy"), default=tracker_config.MODEL_VARIANT)
     parser.add_argument("--input", type=Path, metavar="VIDEO", help="play from a video file instead of the camera")
+    parser.add_argument("--mode", choices=("catch", "mimic"), default="catch",
+                        help="catch: catch falling balls; mimic: strike the pose of the meme shown")
     return parser.parse_args()
 
 
@@ -18,6 +20,7 @@ def main() -> int:
     try:
         from game import render
         from game.catch import CatchGame
+        from game.mimic import MimicGame
         from game.player import Player
         from game.ui import DwellButton
         from game import config
@@ -35,8 +38,14 @@ def main() -> int:
         print(f"error: {e}", file=sys.stderr)
         return 1
 
+    meme_images = renderer.load_memes(tracker_config.MEMES_DIR, tracker_config.MEMES) if args.mode == "mimic" else {}
+    if args.mode == "mimic" and len(meme_images) < 2:
+        pipeline.close()
+        print(f"error: Meme Mimic needs meme pictures in {tracker_config.MEMES_DIR}", file=sys.stderr)
+        return 1
+
     player = Player()
-    game: CatchGame | None = None  # created on the first frame, when the frame size is known
+    game: CatchGame | MimicGame | None = None  # created on the first frame, when the frame size is known
     start_button: DwellButton | None = None
     last_now: float | None = None
     banner, banner_until = "", 0.0
@@ -48,7 +57,8 @@ def main() -> int:
                 return 0  # end of file
             frame = renderer.mirror(tick.frame)
             height, width = frame.shape[:2]
-            game = game or CatchGame(width, height)
+            if game is None:
+                game = CatchGame(width, height) if args.mode == "catch" else MimicGame(list(meme_images))
             start_button = start_button or DwellButton(
                 (width / 2, height * config.START_BUTTON_Y), config.START_BUTTON_RADIUS, config.START_DWELL_S,
             )
@@ -65,11 +75,16 @@ def main() -> int:
             pressed = start_button.update(state.hand_bones, dt) if game.phase != "playing" else False
             if (pressed or State.BOTH_ARMS_UP in state.states) and game.can_start(now):
                 game.start(now)
-            for event in game.update(state.hand_bones, now):
-                if event in ("wrong_hand", "miss"):
-                    banner, banner_until = event.replace("_", " ").upper(), time.monotonic() + 0.6
-
-            view = render.draw_catch(frame, game, state, now, start_button)
+            if isinstance(game, CatchGame):
+                for event in game.update(state.hand_bones, now):
+                    if event in ("wrong_hand", "miss"):
+                        banner, banner_until = event.replace("_", " ").upper(), time.monotonic() + 0.6
+                view = render.draw_catch(frame, game, state, now, start_button)
+            else:
+                for event in game.update(state.meme, now):
+                    if event in ("hit", "timeout"):
+                        banner, banner_until = ("MATCH!" if event == "hit" else "TIME!"), time.monotonic() + 0.8
+                view = render.draw_mimic(frame, game, state, now, start_button, meme_images)
             if time.monotonic() < banner_until:
                 renderer.draw_banner(view, banner)
 

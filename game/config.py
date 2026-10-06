@@ -24,4 +24,13 @@ RESTART_DELAY_S: float = 1.5     # after game over, ignore "hands up" this long 
 START_BUTTON_Y: float = 0.68     # button center, as a fraction of the frame height (easy to reach sitting down)
 START_BUTTON_RADIUS: int = 70
 START_DWELL_S: float = 1.0       # hold a hand on the button this long
+# Meme Mimic (G6): strike the pose of the meme shown
+MIMIC_ROUND_S: float = 10.0      # time for the first meme...
+MIMIC_ROUND_MIN_S: float = 4.0   # ...shrinking to this...
+MIMIC_ROUND_STEP: float = 0.5    # ...by this much per meme matched
+MIMIC_HOLD_S: float = 0.8        # hold the pose this long to match it
+MIMIC_GRACE_S: float = 0.25      # a different reading this short does not break the hold
+MIMIC_LIVES: int = 3             # a round that runs out of time costs a life
+MIMIC_BOX: tuple[int, int] = (480, 360)  # target picture size, px (aspect ratio kept)
+
 SEED: int | None = None          # fixed seed = same object sequence every game (handy for comparing)
