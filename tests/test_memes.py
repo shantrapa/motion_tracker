@@ -69,6 +69,15 @@ def test_shush_vs_thinking_monkey() -> None:
     assert meme(body(), right=tip_at(sideways, MOUTH)) == "MONKEY_THINKING"
 
 
+def test_shush_with_a_long_finger_or_the_mouth_hidden() -> None:
+    # Reported: shush was not picked up. A full-length finger reaches the nose, and the finger hides the
+    # mouth corners from the pose model: both must still read as shush.
+    up_to_nose = tip_at(POINT_UP, (0.5, 0.13))
+    assert meme(body(), right=up_to_nose) == "SHUSH"
+    hidden = pose(FACE, hidden=(9, 10))  # mouth corners not seen
+    assert meme(hidden, right=up_to_nose) == "SHUSH"
+
+
 def test_roll_safe() -> None:
     right_temple = (0.445, 0.125)
     assert meme(body(), right=tip_at(POINT_UP, right_temple)) == "ROLL_SAFE"
@@ -118,6 +127,29 @@ def test_hands_at_the_head_jackie_vs_no_waying() -> None:
     assert meme(body(hands_up)) == "JACKIE_CHAN"                              # elbows down: hands at the temples
     elbows_up = {**hands_up, RIGHT_ELBOW: (0.25, 0.28), LEFT_ELBOW: (0.75, 0.28)}
     assert meme(body(elbows_up)) == "NO_WAYING"                               # elbows up and out: hands behind the head
+
+
+def test_hands_behind_the_head_are_not_gendo() -> None:
+    # Reported: hands behind the head read as Gendo Ikari. On the frame both hands overlap the head, close
+    # together and not far from the mouth; the wrists are hidden behind it.
+    elbows_up = {RIGHT_ELBOW: (0.25, 0.28), LEFT_ELBOW: (0.75, 0.28)}
+    behind = pose({**FACE, **elbows_up}, hidden=(LEFT_WRIST, RIGHT_WRIST, LEFT_INDEX, RIGHT_INDEX))
+    left = center_at(place(make_hand(ALL), (0, 0)), (0.53, 0.06))   # what the hand model sees of each hand
+    right = center_at(place(make_hand(ALL), (0, 0)), (0.47, 0.06))
+    assert meme(behind, left=left, right=right) == "NO_WAYING"
+    # Both hands together over the eyes, elbows down: close to the mouth on the frame, but above the nose.
+    over_eyes_l = center_at(place(make_hand(ALL), (0, 0)), (0.52, 0.12))
+    over_eyes_r = center_at(place(make_hand(ALL), (0, 0)), (0.48, 0.12))
+    assert meme(body(), left=over_eyes_l, right=over_eyes_r) != "GENDO_IKARI"
+    # Hands laced in front of the mouth with the elbows down is still Gendo.
+    low_left = center_at(place(make_hand(set()), (0, 0)), (0.52, 0.24))
+    low_right = center_at(place(make_hand(set()), (0, 0)), (0.48, 0.24))
+    assert meme(body(), left=low_left, right=low_right) == "GENDO_IKARI"
+
+
+def test_arms_spread_up_with_bent_elbows_is_cinema_not_hands_behind_head() -> None:
+    arms = {LEFT_ELBOW: (0.75, 0.3), LEFT_WRIST: (0.72, 0.15), RIGHT_ELBOW: (0.25, 0.3), RIGHT_WRIST: (0.28, 0.15)}
+    assert meme(body(arms)) == "ABSOLUTE_CINEMA"
 
 
 def test_facepalm() -> None:

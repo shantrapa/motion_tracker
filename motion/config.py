@@ -137,7 +137,9 @@ MEME_BOX: tuple[int, int] = (320, 240)  # max picture size, px; the aspect ratio
 MEME_MARGIN: int = 20            # distance from the top-right corner, px
 MEME_SHOULDERS_PER_EARS: float = 2.0  # shoulder width ~ 2x ear-to-ear, when the shoulders are out of view
 MEME_MOUTH_DIST: float = 0.25    # fingertip this close to the mouth center = at the lips
-MEME_SHUSH_ABOVE: float = 0.05   # shush: fingertip above the mouth's middle (finger across the lips); else monkey
+MEME_SHUSH_ALONG: float = 0.85   # shush: the mouth lies along the index finger (knuckle 0 .. tip 1) before this;
+                                 # at the tip's end instead = the thinking monkey's finger pressed to the lip
+MEME_NOSE_TO_MOUTH: float = 0.6  # hidden mouth: nose-to-mouth as a share of eyes-to-nose (faces: ~0.6)
 MEME_TEMPLE_DIST: float = 0.3    # fingertip this close to a temple (between outer eye and ear)
 MEME_GENDO_HANDS: float = 0.7    # both hands' centers this close together...
 MEME_GENDO_MOUTH: float = 0.6    # ...and their midpoint this close to the mouth

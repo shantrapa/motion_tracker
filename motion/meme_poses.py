@@ -19,7 +19,7 @@ from motion.hand_state import finger_states, hand_shape, palm_center, palm_size
 
 LEFT_EYE, LEFT_EYE_OUTER, RIGHT_EYE, RIGHT_EYE_OUTER = 2, 3, 5, 6
 LEFT_EAR, RIGHT_EAR, MOUTH_LEFT, MOUTH_RIGHT = 7, 8, 9, 10
-HAND_MIDDLE_TIP = 12
+HAND_MIDDLE_TIP, INDEX_MCP = 12, 5
 _ARMS = {"left": (LEFT_SHOULDER, LEFT_ELBOW, LEFT_WRIST), "right": (RIGHT_SHOULDER, RIGHT_ELBOW, RIGHT_WRIST)}
 _POSE_INDEX = {"left": LEFT_INDEX, "right": RIGHT_INDEX}
 _EAR = {"left": LEFT_EAR, "right": RIGHT_EAR}
@@ -32,6 +32,17 @@ def _mid(a: Vec2, b: Vec2) -> Vec2:
 def _mean_point(hand: Hand, aspect: float) -> Vec2:
     pts = [iso(lm, aspect) for lm in hand]
     return sum(x for x, _ in pts) / len(pts), sum(y for _, y in pts) / len(pts)
+
+
+def _along(point: Vec2, a: Vec2, b: Vec2) -> tuple[float, float]:
+    """Where point projects onto the line a->b (0 at a, 1 at b) and how far it is from the segment."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length2 = dx * dx + dy * dy
+    if length2 < 1e-12:
+        return 0.0, math.dist(point, a)
+    t = ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length2
+    closest = (a[0] + max(0.0, min(1.0, t)) * dx, a[1] + max(0.0, min(1.0, t)) * dy)
+    return t, math.dist(point, closest)
 
 
 def detect_meme_pose(pose: PoseFrame | None, hands: dict[str, Hand | None], aspect: float) -> str | None:
@@ -64,7 +75,14 @@ def detect_meme_pose(pose: PoseFrame | None, hands: dict[str, Hand | None], aspe
 
     present = {side: hand for side, hand in hands.items() if hand is not None}
     shapes = {side: hand_shape(hand, aspect) for side, hand in present.items()}
-    mouth = _mid(p(MOUTH_LEFT), p(MOUTH_RIGHT)) if seen(MOUTH_LEFT, MOUTH_RIGHT) else None
+    if seen(MOUTH_LEFT, MOUTH_RIGHT):
+        mouth: Vec2 | None = _mid(p(MOUTH_LEFT), p(MOUTH_RIGHT))
+    elif seen(NOSE, LEFT_EYE, RIGHT_EYE):  # a finger over the lips can hide the mouth corners from the pose model
+        # Continue the eyes -> nose line past the nose: follows the face's own size and tilt.
+        (ex, ey), (nx, ny) = _mid(p(LEFT_EYE), p(RIGHT_EYE)), p(NOSE)
+        mouth = (nx + c.MEME_NOSE_TO_MOUTH * (nx - ex), ny + c.MEME_NOSE_TO_MOUTH * (ny - ey))
+    else:
+        mouth = None
     eyes = _mid(p(LEFT_EYE), p(RIGHT_EYE)) if seen(LEFT_EYE, RIGHT_EYE) else (p(NOSE) if seen(NOSE) else None)
     ears = seen(LEFT_EAR, RIGHT_EAR)
     shoulders = seen(LEFT_SHOULDER, RIGHT_SHOULDER)
@@ -82,10 +100,17 @@ def detect_meme_pose(pose: PoseFrame | None, hands: dict[str, Hand | None], aspe
     points = {side: hand_point(side) for side in ("left", "right")}
 
     # --- two hands -------------------------------------------------------------------------------------
-    if mouth and len(present) == 2:
-        centers = [_mean_point(hand, aspect) for hand in present.values()]
-        if near(*centers, c.MEME_GENDO_HANDS) and near(_mid(*centers), mouth, c.MEME_GENDO_MOUTH):
-            return "GENDO_IKARI"  # fingers laced in front of the mouth (fingertips at the lips too: check first)
+    # Hands behind the head: the elbows tell, since the wrists are hidden or guessed. Both elbows up near
+    # shoulder height and wide, and any wrist that is seen up at the head.
+    if shoulders and seen(LEFT_ELBOW, RIGHT_ELBOW):
+        def behind_head(s: str) -> bool:
+            shoulder, elbow, wrist = (p(i) for i in _ARMS[s])
+            elbow_up = elbow[1] < shoulder[1] + c.MEME_ELBOWS_HIGH * unit and outward(s, elbow) > c.MEME_ELBOWS_OUT
+            # A seen wrist must be up and inside the shoulder line (at the head), unlike arms spread wide.
+            wrist_in = not seen(_ARMS[s][2]) or (outward(s, wrist) < 0 and wrist[1] < shoulder[1])
+            return elbow_up and wrist_in
+        if behind_head("left") and behind_head("right"):
+            return "NO_WAYING"
     if ears and shoulders and all(points.values()):
         at_head = all(
             abs(points[s][0] - p(_EAR[s])[0]) < c.MEME_HEAD_SIDE_X * unit
@@ -98,19 +123,28 @@ def detect_meme_pose(pose: PoseFrame | None, hands: dict[str, Hand | None], aspe
                 and outward(s, p(_ARMS[s][1])) > c.MEME_ELBOWS_OUT
                 for s in ("left", "right")
             )
-            return "NO_WAYING" if elbows_up else "JACKIE_CHAN"  # hands behind the head / at the temples
+            if not elbows_up:
+                return "JACKIE_CHAN"  # hands at the temples, elbows down
+    if mouth and seen(NOSE) and len(present) == 2:
+        centers = [_mean_point(hand, aspect) for hand in present.values()]
+        mid = _mid(*centers)
+        # Below the nose: hands behind the head also overlap the face on the frame, but above the eyes.
+        if near(*centers, c.MEME_GENDO_HANDS) and near(mid, mouth, c.MEME_GENDO_MOUTH) and mid[1] > p(NOSE)[1]:
+            return "GENDO_IKARI"  # fingers laced in front of the mouth (fingertips at the lips too: check first)
 
     # --- a finger at the face ----------------------------------------------------------------------------
     for side, hand in present.items():
-        tip = iso(hand[HAND_INDEX_TIP], aspect)
-        if mouth and near(tip, mouth, c.MEME_MOUTH_DIST) and shapes[side] != "OPEN_PALM":
-            # Shush: a straight finger across the lips, so the tip is above the mouth's middle.
-            # Thinking monkey: the finger pressed to the lower lip from below, tip at or under the middle.
-            above = (mouth[1] - tip[1]) / unit
-            if above > c.MEME_SHUSH_ABOVE and finger_states(hand, aspect)["index"]:
-                return "SHUSH"
-            if hand[HAND_WRIST].y > lm[MOUTH_LEFT].y:
-                return "MONKEY_THINKING"
+        if not mouth or shapes[side] == "OPEN_PALM":
+            continue
+        base, tip = iso(hand[INDEX_MCP], aspect), iso(hand[HAND_INDEX_TIP], aspect)
+        along, off = _along(mouth, base, tip)
+        # Shush: a straight finger laid across the lips; the mouth lies along the finger, the tip sticks out
+        # past it (how far does not matter: the tip can reach the nose).
+        if 0.2 < along < c.MEME_SHUSH_ALONG and off < c.MEME_MOUTH_DIST * unit and finger_states(hand, aspect)["index"]:
+            return "SHUSH"
+        # Thinking monkey: the fingertip pressed to the lower lip from below; the mouth is at the tip's end.
+        if near(tip, mouth, c.MEME_MOUTH_DIST) and hand[HAND_WRIST].y > mouth[1]:
+            return "MONKEY_THINKING"
     if seen(LEFT_EYE_OUTER, LEFT_EAR, RIGHT_EYE_OUTER, RIGHT_EAR):
         temples = (_mid(p(LEFT_EYE_OUTER), p(LEFT_EAR)), _mid(p(RIGHT_EYE_OUTER), p(RIGHT_EAR)))
         for side, hand in present.items():
