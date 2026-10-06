@@ -39,6 +39,7 @@ py -3.11 -m venv .venv
 python -m pip install -r requirements.txt
 python scripts/download_model.py          # pose model: full (default); also lite, heavy
 python scripts/download_model.py hand     # finger model
+python scripts/download_model.py face     # face mesh + expressions model
 python -m motion
 ```
 
@@ -49,7 +50,7 @@ Models are downloaded into `models/` from Google's MediaPipe model storage and a
 ## Usage
 
 ```
-python -m motion [--model lite|full|heavy] [--input video.mp4] [--log metrics.csv] [--no-hands] [--scene]
+python -m motion [--model lite|full|heavy] [--input video.mp4] [--log metrics.csv] [--no-hands] [--no-face] [--scene]
 ```
 
 | Option | Effect |
@@ -58,6 +59,7 @@ python -m motion [--model lite|full|heavy] [--input video.mp4] [--log metrics.cs
 | `--input` | process a video file instead of the camera, at real-time speed; exits at the end |
 | `--log` | write metrics to a CSV file once per second |
 | `--no-hands` | skip the finger model entirely |
+| `--no-face` | skip the face (expression) model entirely |
 | `--scene` | start with the ball-and-button scene on |
 
 | Key | Action |
@@ -65,6 +67,7 @@ python -m motion [--model lite|full|heavy] [--input video.mp4] [--log metrics.cs
 | `s` | skeleton on/off |
 | `f` | smoothing on/off (to compare raw vs filtered) |
 | `h` | fingers on/off (also pauses the hand model) |
+| `e` | face mesh and expressions on/off (also pauses the face model) |
 | `g` | scene on/off (ball and button) |
 | `q` / `Esc` | quit |
 
@@ -148,6 +151,19 @@ Pose `full` with and without the finger model. No hands were in view during this
 |---|---|---|---|---|
 | pose only | 30.5 | 31 | — | — |
 | pose + hands | 30.5 | 31 | 30.5 | 31 |
+
+Pose `full` + hands + face (MediaPipe Face Landmarker: 478 points, 52 expression coefficients), live camera,
+~16 s per configuration. Live, the models run in parallel and all keep up with the 30 fps camera:
+
+| Models | Pose FPS / latency | Hands FPS / latency | Face FPS / latency |
+|---|---|---|---|
+| pose | 30.5 / 31 ms | — | — |
+| pose + hands | 30.5 / 31 ms | 30.5 / 31 ms | — |
+| pose + face | 30.5 / 31 ms | — | 30.5 / 31 ms |
+| pose + hands + face | 30.5 / 31 ms | 30.5 / 31 ms | 30.5 / 31 ms |
+
+An earlier run under other CPU load dropped to 18-28 pose FPS in every configuration alike. With `--input` the models
+run one after another on each frame, so file playback with all three runs at about 6-10 fps.
 
 Latency is the time from frame capture until the main loop first sees its result.
 The loop waits on the camera (~33 ms per frame), so anything under one frame period shows as ~31 ms.
