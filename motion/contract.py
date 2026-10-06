@@ -63,3 +63,13 @@ HAND_SKELETON: tuple[tuple[int, int], ...] = (
     (0, 17), (17, 18), (18, 19), (19, 20),   # pinky
     (5, 9), (9, 13), (13, 17),               # palm
 )
+
+
+@dataclass(frozen=True)
+class FaceFrame:
+    timestamp_ms: int
+    landmarks: tuple[Landmark, ...] | None  # 478 face points, or None if no face
+    blendshapes: dict[str, float]           # expression coefficients 0..1 (jawOpen, eyeBlinkLeft, ...); {} if no face
+
+
+NUM_FACE_LANDMARKS = 478

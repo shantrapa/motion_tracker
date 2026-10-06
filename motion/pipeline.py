@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from motion import capture, config, event_engine, geometry, smoothing, tracker
-from motion.contract import NUM_HAND_LANDMARKS, HandsFrame, PoseFrame
+from motion.contract import NUM_HAND_LANDMARKS, FaceFrame, HandsFrame, PoseFrame
 from motion.events import GestureEvent
 from motion.metrics import Metrics
 
@@ -28,16 +28,18 @@ class Tick:
     raw_fingers: dict[str, geometry.Hand | None]
     smooth_fingers: dict[str, geometry.Hand | None]
     new_pose: bool              # raw/smoothed changed on this frame
+    face: FaceFrame | None = None  # latest face result (None: face model off or no result yet)
     events: list[GestureEvent] = field(default_factory=list)
     metrics_updated: bool = False  # a metrics window just closed (time to log)
 
 
 class Pipeline:
-    def __init__(self, model: str, hands: bool, video: Path | None) -> None:
+    def __init__(self, model: str, hands: bool, video: Path | None, face: bool = False) -> None:
         self.video = video
         try:
             self.tracker = tracker.Tracker(
                 config.model_path(model), config.HAND_MODEL_PATH if hands else None, video=video is not None,
+                face_model=config.FACE_MODEL_PATH if face else None,
             )
         except tracker.TrackerError as e:
             raise PipelineError(str(e)) from e
@@ -53,6 +55,8 @@ class Pipeline:
         self.engine = event_engine.GestureEngine()
         self.metrics = Metrics(config.METRICS_WINDOW_S)
         self.hand_metrics = Metrics(config.METRICS_WINDOW_S)
+        self.face_metrics = Metrics(config.METRICS_WINDOW_S)
+        self._last_face: FaceFrame | None = None
         self._smoother = smoothing.PoseSmoother(
             config.ONE_EURO_MIN_CUTOFF, config.ONE_EURO_BETA, config.ONE_EURO_D_CUTOFF, config.FILTER_RESET_MS
         )
@@ -77,6 +81,14 @@ class Pipeline:
     @hands_enabled.setter
     def hands_enabled(self, on: bool) -> None:
         self.tracker.hands_enabled = on
+
+    @property
+    def face_enabled(self) -> bool:
+        return self.tracker.face_enabled
+
+    @face_enabled.setter
+    def face_enabled(self, on: bool) -> None:
+        self.tracker.face_enabled = on
 
     def _latency(self, ts_ms: int) -> float | None:
         # File timestamps are on the video timeline, so wall-clock latency is meaningless there.
@@ -118,12 +130,18 @@ class Pipeline:
             # Always on the smoothed pose: fewer false triggers.
             events += self.engine.update_pose(self._smoothed, aspect)
 
+        face = self.tracker.latest_face() if self.tracker.face_enabled else None
+        if face is not None and face is not self._last_face:
+            self._last_face = face
+            self.face_metrics.on_result(self._latency(face.timestamp_ms))
+
         now = time.monotonic()
         self.hand_metrics.on_frame(now)
+        self.face_metrics.on_frame(now)
         metrics_updated = self.metrics.on_frame(now)
         return Tick(
             frame, frame_ms, self._raw, self._smoothed, self._raw_fingers, self._smooth_fingers,
-            new_pose, events, metrics_updated,
+            new_pose, face, events, metrics_updated,
         )
 
     def close(self) -> None:

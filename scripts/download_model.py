@@ -1,4 +1,4 @@
-"""Download a model: python scripts/download_model.py [lite|full|heavy|hand]  (pose variants or the hand model)"""
+"""Download a model: python scripts/download_model.py [lite|full|heavy|hand|face]  (pose variants, hand or face model)"""
 
 import sys
 import urllib.request
@@ -10,16 +10,17 @@ from motion import config  # noqa: E402
 
 def main() -> int:
     variant = sys.argv[1] if len(sys.argv) > 1 else config.MODEL_VARIANT
-    if variant not in ("lite", "full", "heavy", "hand"):
-        print(f"error: unknown variant '{variant}', use lite, full, heavy or hand", file=sys.stderr)
+    if variant not in ("lite", "full", "heavy", "hand", "face"):
+        print(f"error: unknown variant '{variant}', use lite, full, heavy, hand or face", file=sys.stderr)
         return 1
 
-    dest = config.HAND_MODEL_PATH if variant == "hand" else config.model_path(variant)
+    extra = {"hand": (config.HAND_MODEL_PATH, config.HAND_MODEL_URL), "face": (config.FACE_MODEL_PATH, config.FACE_MODEL_URL)}
+    dest = extra[variant][0] if variant in extra else config.model_path(variant)
     if dest.exists():
         print(f"already present: {dest}")
         return 0
 
-    url = config.HAND_MODEL_URL if variant == "hand" else config.MODEL_URL_TEMPLATE.format(v=variant)
+    url = extra[variant][1] if variant in extra else config.MODEL_URL_TEMPLATE.format(v=variant)
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".part")  # no half-written .task if the download dies
     print(f"downloading {url}")

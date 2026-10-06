@@ -13,6 +13,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log", type=Path, metavar="CSV", help="write metrics once per second")
     parser.add_argument("--input", type=Path, metavar="VIDEO", help="process a video file instead of the camera")
     parser.add_argument("--no-hands", action="store_true", help="do not load the finger (hand) model")
+    parser.add_argument("--no-face", action="store_true", help="do not load the face (expression) model")
     parser.add_argument("--scene", action="store_true", help="start with the interactive scene on (toggle: g)")
     return parser.parse_args()
 
@@ -40,15 +41,17 @@ def main() -> int:
         return 1
     log = csv.writer(log_file) if log_file else None
     if log:
-        log.writerow(["t_s", "model", "hands", "render_fps", "tracking_fps", "latency_ms_median",
-                      "hand_tracking_fps", "hand_latency_ms_median"])
+        log.writerow(["t_s", "model", "hands", "face", "render_fps", "tracking_fps", "latency_ms_median",
+                      "hand_tracking_fps", "hand_latency_ms_median", "face_tracking_fps", "face_latency_ms_median"])
 
     try:
-        pipeline = Pipeline(args.model, hands=not args.no_hands, video=args.input)
+        pipeline = Pipeline(args.model, hands=not args.no_hands, video=args.input, face=not args.no_face)
     except PipelineError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    engine, metrics, hand_metrics = pipeline.engine, pipeline.metrics, pipeline.hand_metrics
+    engine, metrics, hand_metrics, face_metrics = (
+        pipeline.engine, pipeline.metrics, pipeline.hand_metrics, pipeline.face_metrics,
+    )
 
     holds = {side: geometry.HeldPoint(config.LOST_HOLD_MS) for side in ("left", "right")}
     circles: dict[str, geometry.NormPoint | None] = {"left": None, "right": None}
@@ -104,6 +107,8 @@ def main() -> int:
                 side: geometry.to_display(p, width, height) if (p := engine.grip_point(side)) else None
                 for side in ("left", "right")
             }
+            if show_skeleton and tick.face is not None and tick.face.landmarks is not None:
+                renderer.draw_face(view, geometry.display_points(tick.face.landmarks, width, height, 0.0))
             for side, points in fingers.items():
                 if points:
                     color = renderer.SIDE_COLORS[side]
@@ -137,22 +142,34 @@ def main() -> int:
             now = time.monotonic()
             if tick.metrics_updated and log:
                 log.writerow([
-                    f"{now - started:.1f}", args.model, int(pipeline.hands_enabled),
+                    f"{now - started:.1f}", args.model, int(pipeline.hands_enabled), int(pipeline.face_enabled),
                     f"{metrics.render_fps:.1f}", f"{metrics.tracking_fps:.1f}", fmt(metrics.latency_ms, ".1f", ""),
                     f"{hand_metrics.tracking_fps:.1f}", fmt(hand_metrics.latency_ms, ".1f", ""),
+                    f"{face_metrics.tracking_fps:.1f}", fmt(face_metrics.latency_ms, ".1f", ""),
                 ])
                 log_file.flush()
             hands_text = (
                 f"{hand_metrics.tracking_fps:.1f} fps, {fmt(hand_metrics.latency_ms, '.0f', '-')} ms"
                 if pipeline.hands_enabled else "off"
             )
+            face_text = (
+                f"{face_metrics.tracking_fps:.1f} fps, {fmt(face_metrics.latency_ms, '.0f', '-')} ms"
+                if pipeline.face_enabled else "off"
+            )
+            # The strongest expression coefficients: what the face model reads right now (for tuning rules).
+            shapes = tick.face.blendshapes if tick.face is not None else {}
+            strong = sorted(
+                ((v, k) for k, v in shapes.items() if k != "_neutral" and v >= config.FACE_SHOW_MIN), reverse=True,
+            )[:4]
             states = sorted(s.name for s in engine.states if not s.name.endswith("VISIBLE")) or ["-"]
             renderer.draw_overlay(view, [
                 f"render {metrics.render_fps:.1f} fps",
                 f"pose {metrics.tracking_fps:.1f} fps, {fmt(metrics.latency_ms, '.0f', '-')} ms",
                 f"hands {hands_text} [h]",
+                f"face {face_text} [e]",
                 f"model {args.model} | filter {'on' if use_filter else 'off'} [f] | scene {'on' if show_scene else 'off'} [g]",
                 f"meme {meme or '-' if show_memes else 'off'} [m]",
+                "expr: " + (", ".join(f"{k} {v:.2f}" for v, k in strong) or "-"),
                 # A few names per line: hand shapes, directions and finger counts add up fast.
                 *(("states: " if i == 0 else "        ") + ", ".join(states[i:i + 4]) for i in range(0, len(states), 4)),
             ])
@@ -177,6 +194,8 @@ def main() -> int:
                     world.reset_ball()
             if key == config.MEME_KEY:
                 show_memes = not show_memes
+            if key == config.FACE_KEY and not args.no_face:
+                pipeline.face_enabled = not pipeline.face_enabled
             if key == config.HANDS_KEY and not args.no_hands:
                 pipeline.hands_enabled = not pipeline.hands_enabled
     except PipelineError as e:

@@ -1,10 +1,11 @@
 from types import SimpleNamespace
 
 from motion.contract import (
+    FaceFrame,
     LEFT_INDEX, LEFT_PINKY, LEFT_WRIST, NUM_LANDMARKS, RIGHT_WRIST, SKELETON, Landmark, PoseFrame,
 )
 from motion.geometry import HeldPoint, display_points, hand_center
-from motion.tracker import to_pose_frame
+from motion.tracker import to_face_frame, to_pose_frame
 
 
 def lm(x: float, y: float, visibility: float | None = 1.0) -> SimpleNamespace:
@@ -64,3 +65,13 @@ def test_held_point_holds_then_drops() -> None:
     assert held.update(None, 1201) is None          # expired
     assert held.update(None, 1300) is None
     assert held.update((0.5, 0.5), 1400) == (0.5, 0.5)
+
+
+def test_face_frame_keeps_points_and_expressions() -> None:
+    point = SimpleNamespace(x=0.4, y=0.5, z=-0.01, visibility=None)
+    shapes = [SimpleNamespace(category_name="jawOpen", score=0.7), SimpleNamespace(category_name="eyeBlinkLeft", score=0.1)]
+    face = to_face_frame([[point] * 478], [shapes], 12)
+    assert face.timestamp_ms == 12 and len(face.landmarks) == 478
+    assert face.landmarks[0] == Landmark(0.4, 0.5, -0.01, 1.0)  # no per-point visibility: the whole face is gated
+    assert face.blendshapes == {"jawOpen": 0.7, "eyeBlinkLeft": 0.1}
+    assert to_face_frame([], [], 12) == FaceFrame(12, None, {})

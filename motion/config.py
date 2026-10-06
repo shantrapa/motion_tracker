@@ -12,6 +12,7 @@ QUIT_KEYS: tuple[int, ...] = (ord("q"), 27)  # q, Esc
 SKELETON_KEY: int = ord("s")
 FILTER_KEY: int = ord("f")
 HANDS_KEY: int = ord("h")
+FACE_KEY: int = ord("e")         # e for expressions
 SCENE_KEY: int = ord("g")
 
 # Metrics
@@ -22,6 +23,12 @@ POSE_DETECTION_CONFIDENCE: float = 0.5
 POSE_PRESENCE_CONFIDENCE: float = 0.5
 TRACKING_CONFIDENCE: float = 0.5
 LANDMARK_VISIBILITY_THRESHOLD: float = 0.5
+
+# Face model thresholds
+FACE_DETECTION_CONFIDENCE: float = 0.5
+FACE_PRESENCE_CONFIDENCE: float = 0.5
+FACE_TRACKING_CONFIDENCE: float = 0.5
+FACE_SHOW_MIN: float = 0.3       # overlay lists expression coefficients at least this strong
 
 # Hand model thresholds
 MAX_SYNC_DELTA_MS: int = 150  # match hands to a pose only if their timestamps are this close (spec §66)
@@ -186,6 +193,11 @@ HAND_MODEL_URL: str = (
     "hand_landmarker/float16/latest/hand_landmarker.task"
 )
 HAND_MODEL_PATH: Path = MODELS_DIR / "hand_landmarker.task"
+FACE_MODEL_URL: str = (
+    "https://storage.googleapis.com/mediapipe-models/face_landmarker/"
+    "face_landmarker/float16/latest/face_landmarker.task"
+)
+FACE_MODEL_PATH: Path = MODELS_DIR / "face_landmarker.task"
 
 
 def model_path(variant: str = MODEL_VARIANT) -> Path:

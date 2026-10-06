@@ -102,6 +102,13 @@ def draw_meme(frame: np.ndarray, image: np.ndarray, box: tuple[int, int], margin
     return x, y, fw, fh
 
 
+def draw_face(frame: np.ndarray, points: list[Point | None]) -> None:
+    """The face mesh as a cloud of small dots."""
+    for p in points:
+        if p:
+            cv2.circle(frame, p, 1, (200, 255, 200), -1)
+
+
 def draw_overlay(frame: np.ndarray, lines: list[str]) -> None:
     for i, line in enumerate(lines):
         cv2.putText(frame, line, (10, 30 + 30 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
