@@ -31,6 +31,7 @@ MIMIC_ROUND_STEP: float = 0.5    # ...by this much per meme matched
 MIMIC_HOLD_S: float = 0.8        # hold the pose this long to match it
 MIMIC_GRACE_S: float = 0.25      # a different reading this short does not break the hold
 MIMIC_LIVES: int = 3             # a round that runs out of time costs a life
+MIMIC_RECENT_ROUNDS: int = 5     # a meme shown this many rounds ago is fully back in the draw; sooner = less likely
 MIMIC_BOX: tuple[int, int] = (480, 360)  # target picture size, px (aspect ratio kept)
 
 SEED: int | None = None          # fixed seed = same object sequence every game (handy for comparing)

@@ -25,6 +25,8 @@ class MimicGame:
         self.ended_at = float("-inf")
         self._held_since: float | None = None
         self._lost_since: float | None = None
+        self._round = 0
+        self._shown_at: dict[str, int] = {}  # meme -> round it was last shown
 
     def can_start(self, now_s: float) -> bool:
         return self.phase == "ready" or (self.phase == "over" and now_s - self.ended_at >= config.RESTART_DELAY_S)
@@ -33,6 +35,7 @@ class MimicGame:
         self.phase = "playing"
         self.score, self.streak, self.lives, self.round_s = 0, 0, config.MIMIC_LIVES, config.MIMIC_ROUND_S
         self.target = None
+        self._round, self._shown_at = 0, {}
         self._next_round(now_s)
 
     def time_left(self, now_s: float) -> float:
@@ -44,8 +47,21 @@ class MimicGame:
             return 0.0
         return min((now_s - self._held_since) / config.MIMIC_HOLD_S, 1.0)
 
+    def weight(self, meme: str) -> float:
+        """Draw weight: 0 for the meme just shown, low for recent ones, growing back to 1 over
+        MIMIC_RECENT_ROUNDS rounds; never-shown memes are 1. Recent memes go to the back of the queue,
+        but no full cycle is forced."""
+        if meme == self.target:
+            return 0.0
+        if meme not in self._shown_at:
+            return 1.0
+        age = self._round - self._shown_at[meme]
+        return min(age / config.MIMIC_RECENT_ROUNDS, 1.0) ** 2
+
     def _next_round(self, now_s: float) -> None:
-        self.target = self.rng.choice([m for m in self.memes if m != self.target])  # never the same twice in a row
+        self.target = self.rng.choices(self.memes, weights=[self.weight(m) for m in self.memes])[0]
+        self._round += 1
+        self._shown_at[self.target] = self._round
         self.deadline = now_s + self.round_s
         self._held_since = self._lost_since = None
 

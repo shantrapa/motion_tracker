@@ -74,3 +74,22 @@ def test_faster_rounds_have_a_floor_and_start_resets() -> None:
 def test_needs_at_least_two_memes() -> None:
     with pytest.raises(ValueError):
         MimicGame(["SHUSH"])
+
+
+def test_recent_memes_go_to_the_back_without_forcing_a_full_cycle() -> None:
+    many = [f"M{i}" for i in range(10)]
+    g = MimicGame(many, random.Random(1))
+    g.start(0.0)
+    gaps: list[int] = []
+    last_seen: dict[str, int] = {g.target: 0}
+    for n in range(1, 3000):
+        g._next_round(0.0)
+        if g.target in last_seen:
+            gaps.append(n - last_seen[g.target])
+        last_seen[g.target] = n
+    assert min(gaps) >= 2                          # never twice in a row
+    # The mean gap is always the number of memes, whatever the draw; what changes is how often a meme
+    # comes right back. A plain draw without repeats does it ~20% of the time within 3 rounds.
+    assert sum(g <= 3 for g in gaps) / len(gaps) < 0.05
+    # ...but sometimes before every other meme has had its turn: no strict full cycle.
+    assert any(g < len(many) for g in gaps)
