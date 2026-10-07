@@ -59,9 +59,11 @@ class Player:
         states: set[State],
         width: int,
         height: int,
+        face: dict[str, float] | None = None,
     ) -> PlayerState:
-        """pose: the smoothed pose; fingers: the smoothed hand-model landmarks per side (raw normalized).
-        Wrists are re-read once per new pose (like the tracker's circles)."""
+        """pose: the smoothed pose; fingers: the smoothed hand-model landmarks per side (raw normalized);
+        face: expression coefficients, if the face model runs. Wrists are re-read once per new pose
+        (like the tracker's circles)."""
         min_vis = tracker_config.LANDMARK_VISIBILITY_THRESHOLD
         if new_pose and pose is not None:
             for side, hold in self._holds.items():
@@ -89,5 +91,5 @@ class Player:
             head=head,
             events=frozenset(events),
             states=frozenset(states),
-            meme=detect_meme_pose(pose, fingers, width / height),
+            meme=detect_meme_pose(pose, fingers, width / height, face),
         )

@@ -43,8 +43,8 @@ def center_at(hand: Hand, target: tuple[float, float]) -> Hand:
     return tuple(Landmark(p.x + target[0] - mx, p.y + target[1] - my, 0.0, 1.0) for p in hand)
 
 
-def meme(pose_frame, **hands: Hand) -> str | None:
-    return detect_meme_pose(pose_frame, {"left": hands.get("left"), "right": hands.get("right")}, 1.0)
+def meme(pose_frame, face: dict[str, float] | None = None, **hands: Hand) -> str | None:
+    return detect_meme_pose(pose_frame, {"left": hands.get("left"), "right": hands.get("right")}, 1.0, face)
 
 
 POINT_UP = place(make_hand({"index"}), (0, 0))
@@ -167,6 +167,48 @@ def test_shrek_side_eye() -> None:
     turned_and_tilted = {NOSE: (0.535, 0.15), LEFT_EAR: (0.57, 0.15), RIGHT_EAR: (0.43, 0.11)}
     assert meme(body(turned_and_tilted)) == "SHREK"
     assert meme(body({NOSE: (0.535, 0.15)})) is None   # only turned (looking aside): not Shrek
+
+
+# --- expressions (face model) -------------------------------------------------------------------------
+NEUTRAL_FACE = {"_neutral": 0.9, "jawOpen": 0.02}
+
+
+def test_no_waying_and_jackie_need_an_open_mouth_when_the_face_is_seen() -> None:
+    hands_up = {RIGHT_WRIST: (0.42, 0.2), RIGHT_INDEX: (0.43, 0.1), LEFT_WRIST: (0.58, 0.2), LEFT_INDEX: (0.57, 0.1)}
+    elbows_up = {**hands_up, RIGHT_ELBOW: (0.25, 0.28), LEFT_ELBOW: (0.75, 0.28)}
+    shocked = {"jawOpen": 0.6}
+    assert meme(body(hands_up), shocked) == "JACKIE_CHAN"
+    assert meme(body(elbows_up), shocked) == "NO_WAYING"
+    assert meme(body(hands_up), NEUTRAL_FACE) != "JACKIE_CHAN"      # hands at the temples, mouth shut
+    assert meme(body(elbows_up), NEUTRAL_FACE) != "NO_WAYING"       # just stretching
+    assert meme(body(elbows_up), {}) == "NO_WAYING"                 # face model on but no face found: pose alone
+
+
+def test_roll_safe_needs_a_smirk_on_either_side() -> None:
+    right_temple = (0.45, 0.125)
+    finger = tip_at(POINT_UP, right_temple)
+    assert meme(body(), NEUTRAL_FACE, right=finger) != "ROLL_SAFE"
+    assert meme(body(), {"mouthSmileLeft": 0.5}, right=finger) == "ROLL_SAFE"
+    assert meme(body(), {"mouthSmileRight": 0.5}, right=finger) == "ROLL_SAFE"
+
+
+def test_shrek_with_the_face_model_is_a_look_not_a_tilt() -> None:
+    turned = {NOSE: (0.535, 0.15)}
+    assert meme(body(turned), NEUTRAL_FACE) is None
+    assert meme(body(turned), {"eyeSquintRight": 0.6}) == "SHREK"                       # squinting
+    assert meme(body(turned), {"browOuterUpLeft": 0.5, "browOuterUpRight": 0.1}) == "SHREK"  # one brow up
+    assert meme(body(), {"eyeSquintLeft": 0.6}) is None                                 # facing the camera
+    tilted = {NOSE: (0.535, 0.15), LEFT_EAR: (0.57, 0.15), RIGHT_EAR: (0.43, 0.11)}
+    assert meme(body(tilted), NEUTRAL_FACE) is None                                     # tilted, but a calm face
+
+
+def test_surprised_pikachu_is_the_face_alone() -> None:
+    surprised = {"jawOpen": 0.7, "browInnerUp": 0.6}
+    assert meme(body(), surprised) == "SURPRISED_PIKACHU"
+    assert meme(body(), {"jawOpen": 0.7}) is None          # yawning: brows stay down
+    assert meme(body()) is None                            # no face model: no face-only memes
+    hands_up = {RIGHT_WRIST: (0.42, 0.2), RIGHT_INDEX: (0.43, 0.1), LEFT_WRIST: (0.58, 0.2), LEFT_INDEX: (0.57, 0.1)}
+    assert meme(body(hands_up), surprised) == "JACKIE_CHAN"  # the same face with hands at the temples
 
 
 # --- picture switching -------------------------------------------------------------------------------

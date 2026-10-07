@@ -136,6 +136,7 @@ MEMES: dict[str, str] = {        # pose id -> picture in MEMES_DIR (missing file
     "MCAVOY": "mcavoy.jpg",
     "NO_WAYING": "nowaying.jpg",
     "SHREK": "shrek.jpg",
+    "SURPRISED_PIKACHU": "surprised_pikachu.jpg",
 }
 MEME_KEY: int = ord("m")
 MEME_HOLD_MS: int = 400          # a pose must hold this long before its meme shows (no flicker)
@@ -170,7 +171,15 @@ MEME_HEAD_TOP: float = 0.2       # hand on the head: at least this far above the
 MEME_HEAD_TOP_X: float = 0.45    # ...and within this of them sideways
 MEME_MCAVOY_OUT: float = 0.3     # ...while the other hand is this far outside its shoulder
 MEME_SHREK_YAW: float = 0.2      # head turned: nose off the ears' middle by this share of the ear span...
-MEME_SHREK_ROLL: float = 0.12    # ...and tilted: one ear lower by this share
+MEME_SHREK_ROLL: float = 0.12    # ...and tilted: one ear lower by this share (used only without the face model)
+# Expressions (face model coefficients, 0..1; the "expr:" overlay line shows them live). Without the face model
+# (key e off, --no-face) the rules fall back to the pose alone.
+MEME_MOUTH_OPEN: float = 0.3     # jawOpen: mouth open (no waying, Jackie Chan)
+MEME_SMIRK: float = 0.3          # mouthSmileLeft/Right, either side: Roll Safe's knowing smile
+MEME_SQUINT: float = 0.4         # eyeSquintLeft/Right, either side: Shrek's suspicious squint...
+MEME_BROW_RAISE: float = 0.25    # ...or one brow up: browOuterUpLeft/Right differ by this
+MEME_PIKACHU_JAW: float = 0.5    # surprised Pikachu: jaw dropped...
+MEME_PIKACHU_BROWS: float = 0.4  # ...and brows up (browInnerUp), hands away from the face
 
 # Smoothing (One Euro Filter on normalized coords)
 # Tune by eye: jitter at rest -> lower MIN_CUTOFF; lag on fast moves -> raise BETA.

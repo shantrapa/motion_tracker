@@ -32,8 +32,8 @@ def main() -> int:
         return 1
 
     try:
-        # The hand model gives whole hands (fingers too) to catch with.
-        pipeline = Pipeline(args.model, hands=True, video=args.input)
+        # The hand model gives whole hands (fingers too) to catch with; Meme Mimic also reads the face.
+        pipeline = Pipeline(args.model, hands=True, video=args.input, face=args.mode == "mimic")
     except PipelineError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -68,7 +68,7 @@ def main() -> int:
 
             state = player.update(
                 tick.smoothed, tick.new_pose, tick.smooth_fingers, {e.type for e in tick.events},
-                pipeline.engine.states, width, height,
+                pipeline.engine.states, width, height, tick.face.blendshapes if tick.face is not None else None,
             )
             # Start: hold a hand on the START button, or have both arms up. The state, not the "raised" event:
             # arms already up when the restart delay ends must count without lowering them first.

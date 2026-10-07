@@ -82,7 +82,10 @@ def main() -> int:
             )
             # Recognition sees the smoothed pose and hands regardless of what is displayed.
             fingers_seen = tick.smooth_fingers if pipeline.hands_enabled else {}
-            meme = memes.update(detect_meme_pose(tick.smoothed, fingers_seen, frame.shape[1] / frame.shape[0]), frame_ms)
+            expressions = tick.face.blendshapes if tick.face is not None else None
+            meme = memes.update(
+                detect_meme_pose(tick.smoothed, fingers_seen, frame.shape[1] / frame.shape[0], expressions), frame_ms,
+            )
             # Filter state stays warm even when display is unfiltered, so toggling 'f' never jumps.
             pose = tick.smoothed if use_filter else tick.raw
             if tick.new_pose:

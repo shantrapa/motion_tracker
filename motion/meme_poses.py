@@ -45,13 +45,26 @@ def _along(point: Vec2, a: Vec2, b: Vec2) -> tuple[float, float]:
     return t, math.dist(point, closest)
 
 
-def detect_meme_pose(pose: PoseFrame | None, hands: dict[str, Hand | None], aspect: float) -> str | None:
+def detect_meme_pose(
+    pose: PoseFrame | None, hands: dict[str, Hand | None], aspect: float, face: dict[str, float] | None = None,
+) -> str | None:
     """The meme pose shown in this frame, or None. Rules go from the most specific to the most general and
     the first match wins: two hands at the head, a finger at the face, a palm on the face, one hand up,
-    both arms, and last the head alone. Ids are the keys of config.MEMES."""
+    both arms, the head, and last the face alone. Ids are the keys of config.MEMES.
+    face: the face model's expression coefficients (FaceFrame.blendshapes). None or empty = no face model:
+    the rules that use expressions fall back to the pose alone. Only side-free measures are used (either eye,
+    either corner of the mouth), so MediaPipe's unmirrored "Left"/"Right" never matters."""
     if pose is None or pose.landmarks is None:
         return None
     lm = pose.landmarks
+    expr = face or None
+
+    def ex(*names: str) -> float:
+        """The strongest of these expression coefficients (0 without the face model)."""
+        return max(expr.get(n, 0.0) for n in names) if expr else 0.0
+
+    # Expression checks pass without the face model, so the pose-only rules still work then.
+    mouth_open = expr is None or ex("jawOpen") > config.MEME_MOUTH_OPEN
     min_vis = config.LANDMARK_VISIBILITY_THRESHOLD
     c = config
 
@@ -109,7 +122,7 @@ def detect_meme_pose(pose: PoseFrame | None, hands: dict[str, Hand | None], aspe
             # A seen wrist must be up and inside the shoulder line (at the head), unlike arms spread wide.
             wrist_in = not seen(_ARMS[s][2]) or (outward(s, wrist) < 0 and wrist[1] < shoulder[1])
             return elbow_up and wrist_in
-        if behind_head("left") and behind_head("right"):
+        if behind_head("left") and behind_head("right") and mouth_open:
             return "NO_WAYING"
     if ears and shoulders and all(points.values()):
         at_head = all(
@@ -123,7 +136,7 @@ def detect_meme_pose(pose: PoseFrame | None, hands: dict[str, Hand | None], aspe
                 and outward(s, p(_ARMS[s][1])) > c.MEME_ELBOWS_OUT
                 for s in ("left", "right")
             )
-            if not elbows_up:
+            if not elbows_up and mouth_open:
                 return "JACKIE_CHAN"  # hands at the temples, elbows down
     if mouth and seen(NOSE) and len(present) == 2:
         centers = [_mean_point(hand, aspect) for hand in present.values()]
@@ -149,7 +162,8 @@ def detect_meme_pose(pose: PoseFrame | None, hands: dict[str, Hand | None], aspe
         temples = (_mid(p(LEFT_EYE_OUTER), p(LEFT_EAR)), _mid(p(RIGHT_EYE_OUTER), p(RIGHT_EAR)))
         for side, hand in present.items():
             tip = iso(hand[HAND_INDEX_TIP], aspect)
-            if shapes[side] in ("POINT", "FINGER_GUN") and any(near(tip, t, c.MEME_TEMPLE_DIST) for t in temples):
+            smirk = expr is None or ex("mouthSmileLeft", "mouthSmileRight") > c.MEME_SMIRK
+            if shapes[side] in ("POINT", "FINGER_GUN") and any(near(tip, t, c.MEME_TEMPLE_DIST) for t in temples) and smirk:
                 return "ROLL_SAFE"
 
     # --- a hand on the face or the head ------------------------------------------------------------------
@@ -212,8 +226,17 @@ def detect_meme_pose(pose: PoseFrame | None, hands: dict[str, Hand | None], aspe
         if span > 1e-6:
             yaw = (p(NOSE)[0] - _mid(le_, re_)[0]) / span  # nose off the ears' middle: head turned
             roll = (le_[1] - re_[1]) / span                # one ear lower: head tilted
-            if abs(yaw) > c.MEME_SHREK_YAW and abs(roll) > c.MEME_SHREK_ROLL:
-                return "SHREK"  # the skeptical side-eye: head turned and tilted
+            if expr is None:
+                skeptical = abs(roll) > c.MEME_SHREK_ROLL  # no face model: a tilt stands in for the look
+            else:
+                brows = abs(ex("browOuterUpLeft") - ex("browOuterUpRight"))
+                skeptical = ex("eyeSquintLeft", "eyeSquintRight") > c.MEME_SQUINT or brows > c.MEME_BROW_RAISE
+            if abs(yaw) > c.MEME_SHREK_YAW and skeptical:
+                return "SHREK"  # the skeptical side-eye: head turned, squinting or one brow up
+
+    # --- the face alone ----------------------------------------------------------------------------------
+    if expr and ex("jawOpen") > c.MEME_PIKACHU_JAW and ex("browInnerUp") > c.MEME_PIKACHU_BROWS:
+        return "SURPRISED_PIKACHU"  # jaw dropped, brows up (hands at the face matched earlier rules)
     return None
 
 
